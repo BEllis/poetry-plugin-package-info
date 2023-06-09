@@ -1,4 +1,5 @@
 import shutil
+import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -86,6 +87,14 @@ def app(poetry: Poetry) -> PoetryTestApplication:
 
 def test_plugin(app: PoetryTestApplication, fixture_path: Path) -> None:
     with freeze_time("2023-06-09T01:23:45.678Z"):
+        p = subprocess.Popen(
+            ["bash", "-c", "git status"],  # noqa: S603, S607
+            cwd=fixture_path,
+            stdout=subprocess.PIPE,
+        )
+        out = p.stdout.read()  # type: ignore[union-attr]
+        print(out)  # noqa: T201
+
         plugin = GeneratePackageInfoApplicationPlugin()
         plugin.activate(app)
         if app.event_dispatcher is None:
