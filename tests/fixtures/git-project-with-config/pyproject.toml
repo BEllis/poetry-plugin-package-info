@@ -1,0 +1,73 @@
+[tool.poetry]
+name = "git-project-with-config"
+version = "1.2.3"
+description = "Some long description. Some long description. Some long description. Some long description. Some long description. Some long description."
+authors = [
+    "Ben Ellis <ben.ellis@softweyr.co.uk>"
+]
+license = "MIT"
+
+readme = "README.rst"
+
+homepage = "https://python-poetry.org"
+repository = "https://github.com/python-poetry/poetry"
+documentation = "https://python-poetry.org/docs"
+
+keywords = ["packaging", "dependency", "poetry"]
+
+classifiers = [
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Libraries :: Python Modules"
+]
+
+# Requirements
+[tool.poetry.dependencies]
+python = "~2.7 || ^3.4"
+
+[tool.poetry.scripts]
+foo = "foo:bar"
+baz = "bar:baz.boom.bim"
+fox = "fuz.foo:bar.baz"
+
+
+[build-system]
+requires = ["poetry-core>=1.0.2"]
+build-backend = "poetry.core.masonry.api"
+
+
+[tool.poetry-plugin-package-info]
+
+# Don't auto-run before poetry build command
+run-before-build = true
+
+# The path relative to the pyproject.toml file
+package-info-file-path = "my_package_info.py"
+
+# The line length to fit python code into.
+line-length = 80
+
+# The line separate to use.
+line-separator = "\r\n"
+
+# Any header code to put at the top of the file.
+header = """# This is a header
+
+# with multiple lines"""
+
+# Any foot code to put at the bottom of the file.
+footer = """# This is a footer
+
+# with multiple lines"""
+
+# Search parent directories (relative to pyproject.toml) for .git
+git-search-parent-directories = true
+
+# ordered list of variables to include in the file.
+include = [
+    "project-name",
+    { "property" = "project-description" },
+    "git-commit-id",
+    { "property" = "git-is-dirty", "variable_name" = "clean_me" },
+    "git-has-staged-changes",
+    "git-has-unstaged-changes",
+]

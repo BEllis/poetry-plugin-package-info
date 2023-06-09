@@ -1,0 +1,6 @@
+0000000000000000000000000000000000000000 043fb696e3af5a1dff8bcfc354bb3b32ebc5a8d2 Ben Ellis <ben.ellis@softweyr.co.uk> 1685920544 +0100	commit (initial): test commit
+043fb696e3af5a1dff8bcfc354bb3b32ebc5a8d2 854d8349e23d4bedf62d41d90d6ed804c95211b3 Ben Ellis <ben.ellis@softweyr.co.uk> 1685921703 +0100	commit: added .gitignore.
+854d8349e23d4bedf62d41d90d6ed804c95211b3 c4192bc5524b6905de5bcbdc0840e932c48d90ff Ben Ellis <ben.ellis@softweyr.co.uk> 1685924850 +0100	commit: tmp
+c4192bc5524b6905de5bcbdc0840e932c48d90ff 75bfd828b0bccc9c3c1a19bb9a10b517d1dc31c8 Ben Ellis <ben.ellis@softweyr.co.uk> 1686270344 +0100	commit: renamed package to match fixure name.
+75bfd828b0bccc9c3c1a19bb9a10b517d1dc31c8 34705a8a186a61fa5142ed77a757ba2aa66aaec2 Ben Ellis <ben.ellis@softweyr.co.uk> 1686270793 +0100	commit: renamed package in pyproject to match fixture name.
+34705a8a186a61fa5142ed77a757ba2aa66aaec2 a7038af63e9f07c6402a74ce336be7d8d0e713c8 Ben Ellis <ben.ellis@softweyr.co.uk> 1686278059 +0100	commit: deleted ignored file.

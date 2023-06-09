@@ -1,0 +1,106 @@
+[tool.poetry]
+name = "poetry-plugin-package-info"
+version = "0.1.0"
+description = "Plugin for poetry that creates/updates an package_info.py file with various details about the project/package."
+authors = ["Ben Ellis <ben.ellis@softweyr.co.uk>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "poetry_plugin_package_info"}]
+homepage = "https://github.com/bellis/poetry-plugin-package-info"
+documentation = "https://github.com/bellis/poetry-plugin-package-info"
+classifiers = [
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: Software Development",
+    "Topic :: System :: Archiving :: Packaging",
+    "Topic :: System :: Installation/Setup",
+    "Topic :: System :: Software Distribution",
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "License :: OSI Approved :: MIT License"
+]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+poetry = "^1.2"
+gitpython = "^3.1.31"
+mypy = "^1.3.0"
+black = "^23.3.0"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.3.1"
+coverage = "^7.2.7"
+ruff = "^0.0.271"
+codespell = "^2.2.4"
+freezegun = "^1.2.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.plugins."poetry.application.plugin"]
+generate-package-info-command = "poetry_plugin_package_info.plugin:GeneratePackageInfoApplicationPlugin"
+
+[tool.black]
+line-length = 79
+target-version = ['py310']
+include = '\.pyi?$'
+
+[tool.pytest.ini_options]
+addopts = "--strict-markers"
+markers = [
+]
+filterwarnings = ["ignore::pytest.PytestCollectionWarning"]
+
+[tool.mypy]
+packages = ['poetry_plugin_package_info', 'tests']
+strict = true
+python_version = "3.10"
+exclude = ['expected_package_info.py']
+
+[[tool.mypy.overrides]]
+module = "poetry"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "git"
+ignore_missing_imports = true
+
+[tool.coverage.run]
+relative_files = true
+source = ["."]
+omit = ["tests/*", "**/package_info.py"]
+
+[tool.coverage.report]
+omit = ["tests/*"]
+include_namespace_packages = "true"
+exclude_lines = [ 'pragma: no cover', 'raise NotImplementedError', 'if TYPE_CHECKING:', 'if typing.TYPE_CHECKING:', '@overload', '@typing.overload' ]
+
+[tool.ruff]
+line-length = 79
+extend-select = ['W', 'D', 'Q', 'A', 'S', 'B', 'ANN', 'RUF', 'C90', 'UP', 'I', 'N', 'SLF', 'RSE', 'RET', 'T20', 'ARG', 'C4', 'COM', 'DTZ', 'ISC', 'BLE', 'FBT', 'ICN', 'G', 'INP', 'PIE', 'PYI', 'PT', 'SIM', 'TID', 'TCH', 'INT', 'PTH', 'ERA', 'PD', 'PGH', 'PLC', 'PLE', 'PLR', 'PLW', 'TRY', 'NPY']
+pydocstyle.convention = "google"
+ignore = ['PYI014', 'PYI015', 'Q000', 'Q001', 'Q002', 'D211', 'D212']
+flake8-quotes = {inline-quotes = 'single', multiline-quotes = 'double'}
+mccabe = { max-complexity = 10 }
+isort = { known-first-party = ['poetry_plugin_package_info', 'tests'] }
+target-version = "py310"
+
+[tool.ruff.per-file-ignores]
+'tests/**/*.py' = ['S101', 'INP001', 'SLF001', 'D', 'PLR0913']
+
+[tool.codespell]
+skip = '.git,.coverage,.mypy_cache,dist,poetry.lock'

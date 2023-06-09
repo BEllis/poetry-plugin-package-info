@@ -1,0 +1,52 @@
+ci:
+  autofix_prs: false
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+        exclude: ^.*\.egg-info/
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-json
+      - id: check-toml
+      - id: check-yaml
+      - id: pretty-format-json
+        args: [--autofix, --no-ensure-ascii, --no-sort-keys]
+      - id: check-ast
+      - id: debug-statements
+      - id: check-docstring-first
+
+  - repo: https://gitlab.com/smop/pre-commit-hooks
+    rev: v1.0.0
+    hooks:
+      - id: check-poetry
+      - id: check-gitlab-ci
+
+  - repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - id: black
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.2.4
+    hooks:
+      - id: codespell
+
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff
+        entry: "poetry run ruff --fix"
+        language: "python"
+        'types_or': ["python", "pyi"]
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: "poetry run mypy"
+        language: "python"
+        'types_or': ["python", "pyi"]

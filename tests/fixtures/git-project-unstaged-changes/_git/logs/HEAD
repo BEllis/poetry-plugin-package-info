@@ -1,0 +1,5 @@
+0000000000000000000000000000000000000000 043fb696e3af5a1dff8bcfc354bb3b32ebc5a8d2 Ben Ellis <ben.ellis@softweyr.co.uk> 1685920544 +0100	commit (initial): test commit
+043fb696e3af5a1dff8bcfc354bb3b32ebc5a8d2 854d8349e23d4bedf62d41d90d6ed804c95211b3 Ben Ellis <ben.ellis@softweyr.co.uk> 1685921703 +0100	commit: added .gitignore.
+854d8349e23d4bedf62d41d90d6ed804c95211b3 c4192bc5524b6905de5bcbdc0840e932c48d90ff Ben Ellis <ben.ellis@softweyr.co.uk> 1685924850 +0100	commit: tmp
+c4192bc5524b6905de5bcbdc0840e932c48d90ff fe55a2572d7210ac949a63937b805930e331a2a8 Ben Ellis <ben.ellis@softweyr.co.uk> 1686270962 +0100	commit: setup test fixture.
+fe55a2572d7210ac949a63937b805930e331a2a8 f6e36b498dfa61a2a4654fdcb0b969aaf1e0c1df Ben Ellis <ben.ellis@softweyr.co.uk> 1686278139 +0100	commit: removed expected file.
