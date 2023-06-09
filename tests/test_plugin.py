@@ -30,7 +30,6 @@ def fixture_root() -> Path:
         if fixture_dir.is_dir()
     ],
 )
-
 def fixture_path(
     request: pytest.FixtureRequest,
     fixture_root: Path,
@@ -72,11 +71,12 @@ def fixture_path(
     if (fixture_path / ".gitignore").exists():
         (fixture_path / ".gitignore").rename(fixture_path / "_gitignore")
 
+
 @pytest.fixture()
 def poetry(
     fixture_path: Path,
 ) -> Poetry:
-    yield Factory().create_poetry(fixture_path)
+    return Factory().create_poetry(fixture_path)
 
 
 @pytest.fixture()
@@ -92,7 +92,7 @@ def test_plugin(app: PoetryTestApplication, fixture_path: Path) -> None:
             raise ValueError
         plugin.generate_package_info(NullIO())
 
-        expected_file = [file for file in fixture_path.glob('**/*.py.expected')][0]
+        expected_file = list(fixture_path.glob("**/*.py.expected"))[0]
         actual_file = Path(str(expected_file)[:-9])
 
         assert expected_file.read_text() == actual_file.read_text()
