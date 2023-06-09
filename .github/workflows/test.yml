@@ -52,7 +52,7 @@ jobs:
           git clean -fd ./tests
 
       - name: Test with coverage
-        run: poetry run python -m coverage -m pytest .
+        run: poetry run python -m coverage run -m pytest .
 
       - name: Generate coverage report
         run: poetry run python -m coverage xml
