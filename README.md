@@ -1,9 +1,9 @@
 # Poetry Plugin: Package Info
 
 [![PyPi](https://img.shields.io/pypi/v/poetry-plugin-package-info.svg)](https://pypi.org/project/poetry-plugin-package-info/)
-[![Stable Version](https://img.shields.io/pypi/v/poetry-plugin-package-info?label=stable)](PyPI Releases)
-[![Pre-release Version](https://img.shields.io/github/v/release/bellis/poetry-plugin-package-info?label=pre-release&include_prereleases&sort=semver)](PyPI Releases)
-[![Python Versions](https://img.shields.io/pypi/pyversions/poetry-plugin-package-info)](PyPI)
+[![Stable Version](https://img.shields.io/pypi/v/poetry-plugin-package-info?label=stable)](https://pypi.org/project/poetry-plugin-package-info/)
+[![Pre-release Version](https://img.shields.io/github/v/release/bellis/poetry-plugin-package-info?label=pre-release&include_prereleases&sort=semver)](https://pypi.org/project/poetry-plugin-package-info)
+[![Python Versions](https://img.shields.io/pypi/pyversions/poetry-plugin-package-info)](https://pypi.org/project/poetry-plugin-package-info)
 [![Code coverage Status](https://codecov.io/gh/bellis/poetry-plugin-package-info/branch/main/graph/badge.svg)](https://codecov.io/gh/bellis/poetry-plugin-package-info)
 [![PyTest](https://github.com/bellis/poetry-plugin-package-info/workflows/test/badge.svg)](https://github.com/bellis/poetry-plugin-package-info/actions?query=workflow%3Atest)
 [![pre-commit.ci status](https://results.pre-commit.ci/badge/github/BEllis/poetry-plugin-package-info/main.svg)](https://results.pre-commit.ci/latest/github/BEllis/poetry-plugin-package-info/main)
