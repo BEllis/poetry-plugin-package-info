@@ -9,15 +9,21 @@ class PackageInfo:
         "ng description."
     )
     project_version: str = "1.2.3"
-    project_homepage: str = "https://python-poetry.org"
-    project_repository: str = "https://github.com/python-poetry/poetry"
-    project_documentation: str = "https://python-poetry.org/docs"
-    project_classifiers: list[str] = [
-        "Topic :: Software Development :: Build Tools",
-        "Topic :: Software Development :: Libraries :: Python Modules",
-    ]
     project_authors: list[str] = [
         "Ben Ellis <ben.ellis@softweyr.co.uk>",
     ]
     project_license: str = "MIT"
+    project_classifiers: list[str] = [
+        "Topic :: Software Development :: Build Tools",
+        "Topic :: Software Development :: Libraries :: Python Modules",
+    ]
+    project_documentation: str = "https://python-poetry.org/docs"
+    project_repository: str = "https://github.com/python-poetry/poetry"
+    project_homepage: str = "https://python-poetry.org"
+    project_keywords: list[str] = [
+        "packaging",
+        "dependency",
+        "poetry",
+    ]
+    project_readme: str = "README.rst"
     # No git repository found, skipped git properties.

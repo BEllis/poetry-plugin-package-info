@@ -5,17 +5,23 @@ class PackageInfo:
     project_name: str = "git-project-untracked-changes"
     project_description: str = "Some description."
     project_version: str = "1.2.3"
-    project_homepage: str = "https://python-poetry.org"
-    project_repository: str = "https://github.com/python-poetry/poetry"
-    project_documentation: str = "https://python-poetry.org/docs"
-    project_classifiers: list[str] = [
-        "Topic :: Software Development :: Build Tools",
-        "Topic :: Software Development :: Libraries :: Python Modules",
-    ]
     project_authors: list[str] = [
         "Ben Ellis <ben.ellis@softweyr.co.uk>",
     ]
     project_license: str = "MIT"
+    project_classifiers: list[str] = [
+        "Topic :: Software Development :: Build Tools",
+        "Topic :: Software Development :: Libraries :: Python Modules",
+    ]
+    project_documentation: str = "https://python-poetry.org/docs"
+    project_repository: str = "https://github.com/python-poetry/poetry"
+    project_homepage: str = "https://python-poetry.org"
+    project_keywords: list[str] = [
+        "packaging",
+        "dependency",
+        "poetry",
+    ]
+    project_readme: str = "README.rst"
     git_commit_id: str = "9c488ed1e69b7ec5f0f1085f1a6cdeab0b3aa22a"
     git_commit_author_name: str = "Ben Ellis"
     git_commit_author_email: str = "ben.ellis@softweyr.co.uk"
