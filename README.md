@@ -42,7 +42,7 @@ By default, the `package-info.py` file is generated only when using the `package
 poetry package-info generate-file
 ```
 
-The plugin can be enabled to run before `poetry build` command by adding the `patch-wheels` to the project pyproject.toml file.
+The plugin can be enabled to automatically patch wheel files after `poetry build` is run by adding the `patch-wheels` to the project pyproject.toml file.
 
 ```toml
 [tool.poetry-plugin-package-info]
@@ -54,7 +54,7 @@ The plugin can be re-configured in the pyproject.toml file, below are the option
 ```toml
 [tool.poetry-plugin-package-info]
 
-# Run before poetry build command
+# Patch any .whl files produced by `poetry build`
 patch-wheels = false
 
 # The path relative to the pyproject.toml file

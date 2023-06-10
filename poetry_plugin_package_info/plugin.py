@@ -332,8 +332,9 @@ class GeneratePackageInfoApplicationPlugin(
                     if self.git_repo is None:
                         if not added_no_repo_comment:
                             added_no_repo_comment = True
+                            package_info_file_stream.write(" " * self.indent)
                             package_info_file_stream.write(
-                                "# No git repository found, skipped git"
+                                "# No git repository found, skipped git "
                                 "properties.",
                             )
                             package_info_file_stream.write(
@@ -342,6 +343,7 @@ class GeneratePackageInfoApplicationPlugin(
                         continue
                     if self.git_is_bare and not added_is_bare_comment:
                         added_is_bare_comment = True
+                        package_info_file_stream.write(" " * self.indent)
                         package_info_file_stream.write(
                             "# Git repository is bare, skipped "
                             "git properties relating to commits.",

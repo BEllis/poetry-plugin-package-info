@@ -20,4 +20,4 @@ class PackageInfo:
         "Ben Ellis <ben.ellis@softweyr.co.uk>",
     ]
     project_license: str = "MIT"
-# No git repository found, skipped gitproperties.
+    # No git repository found, skipped git properties.

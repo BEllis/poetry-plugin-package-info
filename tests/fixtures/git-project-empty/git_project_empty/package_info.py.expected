@@ -16,7 +16,7 @@ class PackageInfo:
         "Ben Ellis <ben.ellis@softweyr.co.uk>",
     ]
     project_license: str = "MIT"
-# Git repository is bare, skipped git properties relating to commits.
+    # Git repository is bare, skipped git properties relating to commits.
     git_branch_name: str = "main"
     git_branch_path: str = "refs/heads/main"
     git_is_dirty: bool = False
