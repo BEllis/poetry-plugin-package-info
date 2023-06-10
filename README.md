@@ -36,10 +36,10 @@ pip install poetry-plugin-plugin-package-info
 
 ## Usage
 
-By default, the `package-info.py` file is generated only when using the `generage-package-info` command in poetry,
+By default, the `package-info.py` file is generated only when using the `package-info generate-file` command in poetry,
 
 ```
-poetry generate-package-info
+poetry package-info generate-file
 ```
 
 The plugin can be enabled to run before `poetry build` command by adding the `patch-wheels` to the project pyproject.toml file.

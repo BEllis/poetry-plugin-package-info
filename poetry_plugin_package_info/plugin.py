@@ -94,20 +94,24 @@ class UnsupportedIncludeItemError(Exception):
         super().__init__(f"Unsupported value in includes '{include_value}'")
 
 
-class GeneratePackageInfoCommand(Command):  # type: ignore[misc]
+class GenerateFilePackageInfoCommand(Command):  # type: ignore[misc]
     """
-    'generate-package-info' poetry command.
+    'package-info generate-file' poetry command.
 
-    'generate-package-info' command to manually trigger the generation of the
-    package_info.py file.
+    'package-info generate-file' command to manually trigger the generation of
+     the package_info.py file.
     """
 
-    name = "generate-package-info"
+    name = "package-info generate-file"
+    description = """\
+Generates a package_info.py file that contains pyproject.toml and git \
+information.\
+"""
 
     _plugin: "GeneratePackageInfoApplicationPlugin"
 
     def __init__(
-        self: "GeneratePackageInfoCommand",
+        self: "GenerateFilePackageInfoCommand",
         plugin: "GeneratePackageInfoApplicationPlugin",
     ) -> None:
         """
@@ -118,12 +122,12 @@ class GeneratePackageInfoCommand(Command):  # type: ignore[misc]
         self._plugin = plugin
         super().__init__()
 
-    def handle(self: "GeneratePackageInfoCommand") -> int:
+    def handle(self: "GenerateFilePackageInfoCommand") -> int:
         """
         Execute the command.
 
-        Called by poetry when `poetry generate-package-info` is run from the
-        command line.
+        Called by poetry when `poetry package-info generate-file` is run from
+        the command line.
 
         :return: A status code indicating success (0) or failure (not 0).
         """
@@ -272,7 +276,7 @@ class GeneratePackageInfoApplicationPlugin(
     Poetry Plugin to add package_info.py file generation.
 
     Poetry Plugin to add package_info.py file generation to build command and
-    adds a generate-package-info command to poetry CLI.
+    adds a package-info generate-file command to poetry CLI.
     """
 
     initialized: bool = False
@@ -481,8 +485,8 @@ class PackageInfo:
             self.on_terminate,
         )
         application.command_loader.register_factory(
-            "generate-package-info",
-            lambda: GeneratePackageInfoCommand(self),
+            "package-info generate-file",
+            lambda: GenerateFilePackageInfoCommand(self),
         )
 
     def on_terminate(
