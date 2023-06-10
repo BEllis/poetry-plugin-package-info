@@ -52,7 +52,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.plugins."poetry.application.plugin"]
-generate-package-info-command = "poetry_plugin_package_info.plugin:GeneratePackageInfoApplicationPlugin"
+package-info = "poetry_plugin_package_info.plugin:GeneratePackageInfoApplicationPlugin"
 
 [tool.black]
 line-length = 79
@@ -104,3 +104,6 @@ target-version = "py310"
 
 [tool.codespell]
 skip = '.git,.coverage,.mypy_cache,dist,poetry.lock'
+
+[tool.poetry-plugin-package-info]
+patch-wheels = true

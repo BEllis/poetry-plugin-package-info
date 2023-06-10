@@ -24,17 +24,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 """
+import io
 import typing
+import zipfile
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from cleo.commands.command import Command
-from cleo.events.console_command_event import (
-    ConsoleCommandEvent,
-)
-from cleo.events.console_events import COMMAND
+from cleo.events.console_events import TERMINATE
+from cleo.events.console_terminate_event import ConsoleTerminateEvent
 from cleo.events.event import Event
 from cleo.events.event_dispatcher import EventDispatcher
 from cleo.io.io import IO
@@ -42,7 +42,8 @@ from git import InvalidGitRepositoryError
 from git import Repo as GitRepo  # type: ignore[attr-defined]
 from poetry.console.application import Application
 from poetry.console.commands.build import BuildCommand
-from poetry.core.pyproject.toml import PyProjectTOML
+from poetry.core.masonry.builder import Builder
+from poetry.core.masonry.builders.wheel import WheelBuilder
 from poetry.plugins.application_plugin import ApplicationPlugin
 from tomlkit.container import Container, OutOfOrderTableProxy
 from tomlkit.items import AbstractTable, Array, InlineTable
@@ -126,6 +127,7 @@ class GeneratePackageInfoCommand(Command):
 
         :return: A status code indicating success (0) or failure (not 0).
         """
+        self._plugin.initialise()
         return self._plugin.generate_package_info(self.io)
 
 
@@ -258,16 +260,18 @@ class GeneratePackageInfoApplicationPlugin(ApplicationPlugin):
     adds a generate-package-info command to poetry CLI.
     """
 
+    initialized: bool = False
+    application: Application
     default_src_directory: Path
-    run_before_build: bool
+    patch_wheels: bool
     line_length: int
-    pyproject: PyProjectTOML
     pyproject_file_dir: Path
     line_separator: str
     include: dict[str, object]
     footer: str
     header: str
-    package_info_file_path: Path
+    package_info_relative_file_path: Path
+    package_info_absolute_file_path: Path
     git_search_parent_directories: bool
     git_is_bare: bool = False
     git_repo: GitRepo | None
@@ -276,99 +280,107 @@ class GeneratePackageInfoApplicationPlugin(ApplicationPlugin):
         """Creates a new instance of GeneratePackageInfoApplicationPlugin."""
         super().__init__()
 
+    def write_package_info_py(
+        self: "GeneratePackageInfoApplicationPlugin",
+        package_info_file_stream: typing.TextIO,
+    ) -> None:
+        """
+        Write the contents of the package_info.py file to the given stream.
+
+        :param package_info_file_stream: The stream to write the
+                                         package_info.py file content to.
+        """
+        if self.header:
+            self.write_header(package_info_file_stream)
+
+        added_no_repo_comment = False
+        added_is_bare_comment = False
+
+        for item in self.include:
+            match (
+                item
+                if isinstance(item, str)
+                else item["property"]  # type: ignore[index]
+            ).split("-", maxsplit=1):
+                case ["project", pyproject_property_name]:
+                    self.write_project_property(
+                        package_info_file_stream,
+                        pyproject_property_name,
+                        item,
+                    )
+                case ["git", git_property_name]:
+                    if self.git_repo is None:
+                        if not added_no_repo_comment:
+                            added_no_repo_comment = True
+                            package_info_file_stream.write(
+                                "# No git repository found, skipped git"
+                                "properties.",
+                            )
+                            package_info_file_stream.write(
+                                self.line_separator,
+                            )
+                        continue
+                    if self.git_is_bare and not added_is_bare_comment:
+                        added_is_bare_comment = True
+                        package_info_file_stream.write(
+                            "# Git repository is bare, skipped "
+                            "git properties relating to commits.",
+                        )
+                        package_info_file_stream.write(self.line_separator)
+                    self.handle_git_properties(
+                        package_info_file_stream,
+                        git_property_name,
+                        item,
+                    )
+                case _:
+                    raise UnsupportedIncludeItemError(item)
+
+        if self.footer:
+            package_info_file_stream.write(self.footer)
+            package_info_file_stream.write(self.line_separator)
+
     def generate_package_info(
         self: "GeneratePackageInfoApplicationPlugin",
         _: IO,
     ) -> int:
         """
-        Generate an package_info.py file.
+        Generate a package_info.py file.
 
-        Generate an package_info.py file based on the configuration provided.
+        Generate a package_info.py file based on the configuration provided.
         :param _: The IO channel to log console messages to.
         :return: A status code indicating success(0) or failure (non-zero)
         """
-        with Path(self.package_info_file_path).open(
+        with Path(self.package_info_absolute_file_path).open(
             "w",
         ) as package_info_file_stream:
-            if self.header:
-                self.write_header(package_info_file_stream)
-
-            added_no_repo_comment = False
-            added_is_bare_comment = False
-
-            for item in self.include:
-                match (
-                    item
-                    if isinstance(item, str)
-                    else item["property"]  # type: ignore[index]
-                ).split("-", maxsplit=1):
-                    case ["project", pyproject_property_name]:
-                        self.write_project_property(
-                            package_info_file_stream,
-                            pyproject_property_name,
-                            item,
-                        )
-                    case ["git", git_property_name]:
-                        if self.git_repo is None:
-                            if not added_no_repo_comment:
-                                added_no_repo_comment = True
-                                package_info_file_stream.write(
-                                    "# No git repository found, skipped git"
-                                    "properties.",
-                                )
-                                package_info_file_stream.write(
-                                    self.line_separator,
-                                )
-                            continue
-                        if self.git_is_bare and not added_is_bare_comment:
-                            added_is_bare_comment = True
-                            package_info_file_stream.write(
-                                "# Git repository is bare, skipped "
-                                "git properties relating to commits.",
-                            )
-                            package_info_file_stream.write(self.line_separator)
-                        self.handle_git_properties(
-                            package_info_file_stream,
-                            git_property_name,
-                            item,
-                        )
-                    case _:
-                        raise UnsupportedIncludeItemError(item)
-
-            if self.footer:
-                package_info_file_stream.write(self.footer)
-                package_info_file_stream.write(self.line_separator)
+            self.write_package_info_py(package_info_file_stream)
 
         return 0
 
-    def activate(
-        self: "GeneratePackageInfoApplicationPlugin",
-        application: Application,
-    ) -> None:
-        """
-        Activate the plugin, load configuration and register commands.
+    def initialise(self: "GeneratePackageInfoApplicationPlugin") -> None:
+        """Initialises the plugin based on pyproject.toml configuration."""
+        if self.initialized:
+            return
 
-        :param application: The poetry application.
-        :return: None
-        """
-        self.pyproject = application.poetry.pyproject
-        self.pyproject_file_dir = application.poetry.pyproject.file.path.parent
+        self.pyproject_file_dir = (
+            self.application.poetry.pyproject.file.path.parent
+        )
         self.default_src_directory = Path(
-            application.poetry.package.name.replace("-", "_"),
+            self.application.poetry.package.name.replace("-", "_"),
         )
         plugin_config: ContainerWrapper = ContainerWrapper(
-            self.pyproject.data.get("tool"),
+            self.application.poetry.pyproject.data.get("tool"),
         ).get_or_empty("poetry-plugin-package-info")
-        self.run_before_build = plugin_config.get_or_default(
-            "run-before-build",
+        self.patch_wheels = plugin_config.get_or_default(
+            "patch-wheels",
             default=False,
         )
-        self.package_info_file_path = (
-            self.pyproject_file_dir
-            / plugin_config.get_or_default(
-                "package-info-file-path",
-                f"{self.default_src_directory}/package_info.py",
-            )
+        self.package_info_relative_file_path = plugin_config.get_or_default(
+            "package-info-file-path",
+            f"{self.default_src_directory}/package_info.py",
+        )
+        self.package_info_absolute_file_path = (
+            self.pyproject_file_dir / self.package_info_relative_file_path
         )
         # PEP-8 specifies 79 as recommended.
         self.line_length = plugin_config.get_or_default("line-length", 79)
@@ -426,19 +438,32 @@ class GeneratePackageInfoApplicationPlugin(ApplicationPlugin):
         except InvalidGitRepositoryError:
             self.git_repo = None
 
+        self.initialized = True
+
+    def activate(
+        self: "GeneratePackageInfoApplicationPlugin",
+        application: Application,
+    ) -> None:
+        """
+        Activate the plugin, load configuration and register commands.
+
+        :param application: The poetry application.
+        :return: None
+        """
+        self.application = application
         typing.cast(
             EventDispatcher,
             application.event_dispatcher,
         ).add_listener(
-            COMMAND,
-            self.on_command,
+            TERMINATE,
+            self.on_terminate,
         )
         application.command_loader.register_factory(
             "generate-package-info",
             lambda: GeneratePackageInfoCommand(self),
         )
 
-    def on_command(
+    def on_terminate(
         self: "GeneratePackageInfoApplicationPlugin",
         event: Event,
         event_name: str,  # noqa: ARG002
@@ -454,16 +479,35 @@ class GeneratePackageInfoApplicationPlugin(ApplicationPlugin):
         :param dispatcher: The dispatcher that dispatched the event.
         :return: None
         """
-        if not isinstance(event, ConsoleCommandEvent):
+        if not isinstance(event, ConsoleTerminateEvent):
             return
         command = event.command
         if not isinstance(command, BuildCommand):
             return
 
-        io = event.io
+        out = event.io
+        self.initialise()
 
-        if self.run_before_build:
-            self.generate_package_info(io)
+        if not self.patch_wheels:
+            return
+
+        fmt = command.option("format") or "all"
+        builder = Builder(command.poetry)
+        if fmt in builder._formats:  # noqa: SLF001
+            builder_types = [builder._formats[fmt]]  # noqa: SLF001
+        elif fmt == "all":
+            builder_types = list(builder._formats.values())  # noqa: SLF001
+        else:
+            raise ValueError(f"Unsupported format: {fmt}")  # noqa: TRY003
+
+        for builder_type in builder_types:
+            if issubclass(builder_type, WheelBuilder):
+                builder_instance = builder_type(self.application.poetry)
+                self.update_wheel(
+                    Path(builder_instance.default_target_dir)
+                    / builder_instance.wheel_filename,
+                    out,
+                )
 
     def write_git_property(
         self: "GeneratePackageInfoApplicationPlugin",
@@ -499,7 +543,7 @@ class GeneratePackageInfoApplicationPlugin(ApplicationPlugin):
         :return: None
         """
         tool_poetry_section: ContainerWrapper = ContainerWrapper(
-            self.pyproject.data.get("tool"),
+            self.application.poetry.pyproject.data.get("tool"),
         ).get_or_error("poetry")
         value = tool_poetry_section.get_or_default(param, None)
         self.write_property_object(package_info_file_stream, item, value)
@@ -720,3 +764,25 @@ class GeneratePackageInfoApplicationPlugin(ApplicationPlugin):
             item,
             git_lookup_method,
         )
+
+    def update_wheel(
+        self: "GeneratePackageInfoApplicationPlugin",
+        wheel_file: Path,
+        out: IO,
+    ) -> None:
+        """Update the wheel distribution with the package_info.py file."""
+        with io.StringIO() as package_info_py_stream:
+            self.write_package_info_py(package_info_py_stream)
+            data = package_info_py_stream.getvalue()
+
+        out.write_line(
+            f"""\
+Patching {wheel_file!s} with {self.package_info_relative_file_path}\
+""",
+        )
+        with zipfile.ZipFile(
+            str(wheel_file),
+            mode="a",
+            compression=zipfile.ZIP_DEFLATED,
+        ) as zip_file:
+            zip_file.writestr(str(self.package_info_relative_file_path), data)

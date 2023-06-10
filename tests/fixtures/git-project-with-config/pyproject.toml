@@ -38,7 +38,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry-plugin-package-info]
 
 # Don't auto-run before poetry build command
-run-before-build = true
+patch-wheels = true
 
 # The path relative to the pyproject.toml file
 package-info-file-path = "my_package_info.py"

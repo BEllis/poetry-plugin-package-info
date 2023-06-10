@@ -36,6 +36,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install poetry
 
+      - uses: pre-commit/action@v3.0.0
+
+      - uses: pre-commit-ci/lite-action@v1.0.1
+        if: always()
+
       - name: Poetry Install
         run: |
           poetry install
@@ -61,7 +66,6 @@ jobs:
         uses: codecov/codecov-action@v3
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-        continue-on-error: true
         with:
           fail_ci_if_error: true
           files: ./coverage.xml
