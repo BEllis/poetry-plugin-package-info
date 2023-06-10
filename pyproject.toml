@@ -38,6 +38,7 @@ poetry = "^1.2"
 gitpython = "^3.1.31"
 mypy = "^1.3.0"
 black = "^23.3.0"
+jinja2 = "^3.1.2"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -97,7 +98,7 @@ exclude_lines = [ 'pragma: no cover', 'raise NotImplementedError', 'if TYPE_CHEC
 line-length = 79
 extend-select = ['W', 'D', 'Q', 'A', 'S', 'B', 'ANN', 'RUF', 'C90', 'UP', 'I', 'N', 'SLF', 'RSE', 'RET', 'T20', 'ARG', 'C4', 'COM', 'DTZ', 'ISC', 'BLE', 'FBT', 'ICN', 'G', 'INP', 'PIE', 'PYI', 'PT', 'SIM', 'TID', 'TCH', 'INT', 'PTH', 'ERA', 'PD', 'PGH', 'PLC', 'PLE', 'PLR', 'PLW', 'TRY', 'NPY']
 pydocstyle.convention = "google"
-ignore = ['PYI014', 'PYI015', 'Q000', 'Q001', 'Q002', 'D211', 'D212']
+ignore = ['PYI014', 'PYI015', 'Q000', 'Q001', 'Q002', 'D211', 'D212', 'ANN401', 'S701']
 flake8-quotes = {inline-quotes = 'single', multiline-quotes = 'double'}
 mccabe = { max-complexity = 10 }
 isort = { known-first-party = ['poetry_plugin_package_info', 'tests'] }

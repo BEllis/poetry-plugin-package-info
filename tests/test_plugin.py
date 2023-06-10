@@ -9,7 +9,7 @@ from poetry.factory import Factory
 from poetry.poetry import Poetry
 
 from poetry_plugin_package_info.plugin import (
-    GeneratePackageInfoApplicationPlugin,
+    PackageInfoApplicationPlugin,
 )
 from tests.helpers import PoetryTestApplication
 
@@ -86,7 +86,7 @@ def app(poetry: Poetry) -> PoetryTestApplication:
 
 def test_plugin(app: PoetryTestApplication, fixture_path: Path) -> None:
     with freeze_time("2023-06-09T01:23:45.678Z"):
-        plugin = GeneratePackageInfoApplicationPlugin()
+        plugin = PackageInfoApplicationPlugin()
         plugin.activate(app)
         if app.event_dispatcher is None:
             raise ValueError

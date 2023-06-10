@@ -44,7 +44,7 @@ patch-wheels = true
 package-info-file-path = "my_package_info.py"
 
 # The line length to fit python code into.
-line-length = 80
+line-length = 57
 
 # The line separate to use.
 line-separator = "\r\n"
@@ -68,6 +68,7 @@ git-search-parent-directories = true
 include = [
     "project-name",
     { "property" = "project-description" },
+    "project-classifiers",
     "git-commit-id",
     { "property" = "git-is-dirty", "variable_name" = "clean_me" },
     "git-has-staged-changes",

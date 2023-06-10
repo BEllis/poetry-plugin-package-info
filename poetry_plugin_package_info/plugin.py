@@ -24,12 +24,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 """
+import importlib.metadata
 import io
 import typing
 import zipfile
-from collections.abc import Callable
-from datetime import datetime, timezone
+from abc import ABC, abstractmethod
+from datetime import datetime
 from pathlib import Path
+from types import NoneType, UnionType
 from typing import Any
 
 from cleo.commands.command import Command
@@ -38,8 +40,7 @@ from cleo.events.console_terminate_event import ConsoleTerminateEvent
 from cleo.events.event import Event
 from cleo.events.event_dispatcher import EventDispatcher
 from cleo.io.io import IO
-from git import InvalidGitRepositoryError
-from git import Repo as GitRepo
+from jinja2 import Environment, Template
 from poetry.console.application import Application
 from poetry.console.commands.build import BuildCommand
 from poetry.core.masonry.builder import Builder
@@ -47,6 +48,109 @@ from poetry.core.masonry.builders.wheel import WheelBuilder
 from poetry.plugins.application_plugin import ApplicationPlugin
 from tomlkit.container import Container, OutOfOrderTableProxy
 from tomlkit.items import AbstractTable, Array, InlineTable
+
+
+def type_as_python(value: type) -> str:
+    """Returns the python code for the type.
+
+    Returns the python code to represent the given type in the generated
+    .py file.
+    """
+    if issubclass(value, NoneType):
+        return "None"
+
+    builtins = (str, int, float, bool)
+    if issubclass(value, builtins):
+        return value.__name__
+
+    if len(typing.get_args(value)) > 0:
+        args = (
+            "["
+            + ", ".join([as_python(arg) for arg in typing.get_args(value)])
+            + "]"
+        )
+        return value.__name__ + args
+
+    # workaround for freezegun
+    if issubclass(value, datetime):
+        return "datetime.datetime"
+
+    return value.__name__.__module__ + "." + value.__name__
+
+
+def as_python(value: Any) -> str:
+    """Generate Python code to represent the given value."""
+    if value is None:
+        return "None"
+
+    if isinstance(value, UnionType):
+        return " | ".join([as_python(arg) for arg in typing.get_args(value)])
+
+    if isinstance(value, type):
+        return type_as_python(value)
+
+    if isinstance(value, str):
+        return f'"{value}"'
+
+    if isinstance(value, datetime):
+        return f'datetime.datetime.fromisoformat("{value.isoformat()}")'
+
+    return str(value)
+
+
+class IncludePropertyConfig(typing.NamedTuple):
+    """Configuration for properties to be included."""
+
+    property_generator: "PropertyGenerator"
+    property_name: str
+    variable_name: str
+    metadata: dict[str, Any]
+
+
+class Property(typing.NamedTuple):
+    """A generated property."""
+
+    include_config: IncludePropertyConfig
+    property_value: Any
+    property_type: type
+    metadata: dict[str, Any]
+
+
+class PropertyGenerator(ABC):
+    """Abstract generator of properties."""
+
+    @abstractmethod
+    def short_name(self: "PropertyGenerator") -> str:
+        """Shortname/Prefix for properties belonging to this generator."""
+
+    @abstractmethod
+    def init(
+        self: "PropertyGenerator",
+        plugin: "PackageInfoApplicationPlugin",
+    ) -> None:
+        """Initialise the PropertyGenerator for the provided plugin."""
+
+    @abstractmethod
+    def generate_property(
+        self: "PropertyGenerator",
+        include_config: IncludePropertyConfig,
+    ) -> Property:
+        """Generate the property for the given include configuration."""
+
+
+class ContentFormatter(ABC):
+    """Abstract formatter of python file content."""
+
+    @abstractmethod
+    def init(
+        self: "ContentFormatter",
+        plugin: "PackageInfoApplicationPlugin",
+    ) -> None:
+        """Initialise the ContentFormatter for the provided plugin."""
+
+    @abstractmethod
+    def format_content(self: "ContentFormatter", content: str) -> str:
+        """Format the given python file content."""
 
 
 class MissingPropertyFromIncludeConfigItemError(Exception):
@@ -108,11 +212,11 @@ Generates a package_info.py file that contains pyproject.toml and git \
 information.\
 """
 
-    _plugin: "GeneratePackageInfoApplicationPlugin"
+    _plugin: "PackageInfoApplicationPlugin"
 
     def __init__(
         self: "GenerateFilePackageInfoCommand",
-        plugin: "GeneratePackageInfoApplicationPlugin",
+        plugin: "PackageInfoApplicationPlugin",
     ) -> None:
         """
         Construct a new GeneratePackageInfoCommand.
@@ -153,7 +257,7 @@ class ContainerWrapper:
         """
         self._container = container
 
-    def get(self: "ContainerWrapper", param: str) -> Any:  # noqa: ANN401
+    def get(self: "ContainerWrapper", param: str) -> Any:
         """
         Get the TOML section/property (if present) otherwise None.
 
@@ -175,8 +279,8 @@ class ContainerWrapper:
     def get_or_default(
         self: "ContainerWrapper",
         param: str,
-        default: Any,  # noqa: ANN401
-    ) -> Any:  # noqa: ANN401
+        default: Any,
+    ) -> Any:
         """
         Get the TOML section/property (if present) otherwise a default.
 
@@ -202,7 +306,7 @@ class ContainerWrapper:
     def get_or_error(
         self: "ContainerWrapper",
         param: str,
-    ) -> Any:  # noqa: ANN401
+    ) -> Any:
         """
         Get the TOML section/property, else raise NoSuchTomlPropertyError.
 
@@ -230,7 +334,7 @@ class ContainerWrapper:
     def get_or_empty(
         self: "ContainerWrapper",
         param: str,
-    ) -> Any:  # noqa: ANN401
+    ) -> Any:
         """
         Get the TOML section/property, otherwise return an 'empty' value.
 
@@ -255,7 +359,7 @@ class ContainerWrapper:
         return value
 
 
-def get_variable_type(value: Any) -> str:  # noqa: ANN401
+def get_variable_type(value: Any) -> str:
     """Determine the type of the variable for the given value."""
     if isinstance(value, datetime):
         return "str"
@@ -269,7 +373,34 @@ def get_variable_type(value: Any) -> str:  # noqa: ANN401
     return "str"
 
 
-class GeneratePackageInfoApplicationPlugin(
+def types_in(cls: type) -> list[type]:
+    """Recursively returns the type and any type arguments into a list."""
+    result = [cls]
+    for arg in typing.get_args(cls):
+        result += types_in(arg)
+
+    return result
+
+
+def get_imports_from_properties(properties: list[Property]) -> set[str]:
+    """Gets a list of modules that will need importing into the python file."""
+    imports = set()
+    for property_item in properties:
+        types = types_in(property_item.property_type)
+        for cls in types:
+            # Workaround for freezegun
+            if isinstance(cls, type) and issubclass(cls, datetime):
+                imports.add("datetime")
+            elif cls.__module__ != "builtins" and not isinstance(
+                cls,
+                UnionType,
+            ):
+                imports.add(cls.__module__)
+
+    return imports
+
+
+class PackageInfoApplicationPlugin(
     ApplicationPlugin,  # type: ignore[misc]
 ):
     """
@@ -283,25 +414,32 @@ class GeneratePackageInfoApplicationPlugin(
     application: Application
     default_src_directory: Path
     patch_wheels: bool
-    line_length: int
     pyproject_file_dir: Path
+    formatter: ContentFormatter
+    template: Template
     line_separator: str
-    include: dict[str, object]
-    footer: str
-    header: str
-    indent: int
+    include: list[IncludePropertyConfig]
     package_info_relative_file_path: Path
     package_info_absolute_file_path: Path
-    git_search_parent_directories: bool
-    git_is_bare: bool = False
-    git_repo: GitRepo | None
+    plugin_config: ContainerWrapper
 
-    def __init__(self: "GeneratePackageInfoApplicationPlugin") -> None:
+    def __init__(self: "PackageInfoApplicationPlugin") -> None:
         """Creates a new instance of GeneratePackageInfoApplicationPlugin."""
         super().__init__()
 
+    def new_instance(
+        self: "PackageInfoApplicationPlugin",
+        entry_point: str,
+    ) -> Any:
+        """Create and initialise a new instance of the given entry_point."""
+        module = importlib.import_module(entry_point.split(":", 1)[0])
+        cls = getattr(module, entry_point.split(":", 1)[1])
+        instance = cls()
+        instance.init(self)
+        return instance
+
     def write_package_info_py(
-        self: "GeneratePackageInfoApplicationPlugin",
+        self: "PackageInfoApplicationPlugin",
         package_info_file_stream: typing.TextIO,
     ) -> None:
         """
@@ -310,59 +448,22 @@ class GeneratePackageInfoApplicationPlugin(
         :param package_info_file_stream: The stream to write the
                                          package_info.py file content to.
         """
-        if self.header:
-            self.write_header(package_info_file_stream)
+        properties: list[Property] = []
+        for include in self.include:
+            properties.append(
+                include.property_generator.generate_property(include),
+            )
 
-        added_no_repo_comment = False
-        added_is_bare_comment = False
+        imports = get_imports_from_properties(properties)
 
-        for item in self.include:
-            match (
-                item
-                if isinstance(item, str)
-                else item["property"]  # type: ignore[index]
-            ).split("-", maxsplit=1):
-                case ["project", pyproject_property_name]:
-                    self.write_project_property(
-                        package_info_file_stream,
-                        pyproject_property_name,
-                        item,
-                    )
-                case ["git", git_property_name]:
-                    if self.git_repo is None:
-                        if not added_no_repo_comment:
-                            added_no_repo_comment = True
-                            package_info_file_stream.write(" " * self.indent)
-                            package_info_file_stream.write(
-                                "# No git repository found, skipped git "
-                                "properties.",
-                            )
-                            package_info_file_stream.write(
-                                self.line_separator,
-                            )
-                        continue
-                    if self.git_is_bare and not added_is_bare_comment:
-                        added_is_bare_comment = True
-                        package_info_file_stream.write(" " * self.indent)
-                        package_info_file_stream.write(
-                            "# Git repository is bare, skipped "
-                            "git properties relating to commits.",
-                        )
-                        package_info_file_stream.write(self.line_separator)
-                    self.handle_git_properties(
-                        package_info_file_stream,
-                        git_property_name,
-                        item,
-                    )
-                case _:
-                    raise UnsupportedIncludeItemError(item)
-
-        if self.footer:
-            package_info_file_stream.write(self.footer)
-            package_info_file_stream.write(self.line_separator)
+        package_info_file_stream.write(
+            self.formatter.format_content(
+                self.template.render(properties=properties, imports=imports),
+            ),
+        )
 
     def generate_package_info(
-        self: "GeneratePackageInfoApplicationPlugin",
+        self: "PackageInfoApplicationPlugin",
         _: IO,
     ) -> int:
         """
@@ -380,7 +481,88 @@ class GeneratePackageInfoApplicationPlugin(
 
         return 0
 
-    def initialise(self: "GeneratePackageInfoApplicationPlugin") -> None:
+    def parse_include_property_configs(
+        self: "PackageInfoApplicationPlugin",
+        include_config: list[Any],
+    ) -> list[IncludePropertyConfig]:
+        """Parse the property configurations."""
+        includes = []
+        for item in include_config:
+            if isinstance(item, str):
+                property_generator = self.generators.get(
+                    item.split("-", maxsplit=1)[0],
+                    None,
+                )
+                property_name = item.split("-", maxsplit=1)[1]
+                if property_generator is None:
+                    # TODO: More descriptive error
+                    raise ValueError
+                variable_name = (
+                    property_generator.short_name()
+                    + "_"
+                    + property_name.replace("-", "_")
+                )
+                metadata: dict[str, Any] = {}
+                includes.append(
+                    IncludePropertyConfig(
+                        property_generator,
+                        property_name,
+                        variable_name,
+                        metadata,
+                    ),
+                )
+            elif isinstance(item, InlineTable):
+                property_generator = self.generators.get(
+                    item["property-generator"]
+                    if "property-generator" in item
+                    else None,
+                    None,
+                )
+                property_name = (
+                    item["property-name"] if "property-name" in item else None
+                )
+                if property_name is None or property_generator is None:
+                    # Ignore invalid includes?
+                    continue
+                variable_name = (
+                    item["variable-name"]
+                    if "variable-name" in item
+                    else property_generator.short_name()
+                    + "_"
+                    + property_name.replace("-", "_")
+                )
+                metadata = item["metadata"] if "metadata" in item else {}
+                includes.append(
+                    IncludePropertyConfig(
+                        property_generator,
+                        property_name,
+                        variable_name,
+                        metadata,
+                    ),
+                )
+            else:
+                # Ignore invalid includes?
+                pass
+        return includes
+
+    def load_generators(
+        self: "PackageInfoApplicationPlugin",
+        generators: dict[str, str],
+    ) -> dict[str, PropertyGenerator]:
+        """Load the given list of generators."""
+        return {
+            k: typing.cast(PropertyGenerator, self.new_instance(v))
+            for k, v in generators.items()
+        }
+
+    def load_formatter(
+        self: "PackageInfoApplicationPlugin",
+        formatter: str,
+    ) -> ContentFormatter:
+        """Load the formatter."""
+        return typing.cast(ContentFormatter, self.new_instance(formatter))
+
+    def initialise(self: "PackageInfoApplicationPlugin") -> None:
         """Initialises the plugin based on pyproject.toml configuration."""
         if self.initialized:
             return
@@ -391,87 +573,106 @@ class GeneratePackageInfoApplicationPlugin(
         self.default_src_directory = Path(
             self.application.poetry.package.name.replace("-", "_"),
         )
-        plugin_config: ContainerWrapper = ContainerWrapper(
+        self.plugin_config: ContainerWrapper = ContainerWrapper(
             self.application.poetry.pyproject.data.get("tool"),
         ).get_or_empty("poetry-plugin-package-info")
-        self.patch_wheels = plugin_config.get_or_default(
+        self.patch_wheels = self.plugin_config.get_or_default(
             "patch-wheels",
             default=False,
         )
-        self.package_info_relative_file_path = plugin_config.get_or_default(
-            "package-info-file-path",
-            f"{self.default_src_directory}/package_info.py",
+        self.package_info_relative_file_path = (
+            self.plugin_config.get_or_default(
+                "package-info-file-path",
+                f"{self.default_src_directory}/package_info.py",
+            )
         )
         self.package_info_absolute_file_path = (
             self.pyproject_file_dir / self.package_info_relative_file_path
         )
         # PEP-8 specifies 79 as recommended.
-        self.line_length = plugin_config.get_or_default("line-length", 79)
-        self.line_separator = plugin_config.get_or_default(
+        self.formatter = self.load_formatter(
+            self.plugin_config.get_or_default(
+                "formatter",
+                "poetry_plugin_package_info.formatters.black:BlackContentFormatter",
+            ),
+        )
+        env = Environment()
+        self.template = env.from_string(
+            self.plugin_config.get_or_default(
+                "template",
+                """\
+\"\"\"Auto-generated by poetry-plugin-package-info at {{\
+ now().replace(microsecond=0).isoformat() \
+ }}.\"\"\"\
+{% for import in imports %}
+import {{import}}
+{% endfor %}
+
+class PackageInfo:
+{% for property in properties %}\
+{{ "    " }}{{property.include_config.variable_name}}: \
+{{as_python(property.property_type)}} = \
+{{as_python(property.property_value)}}
+{% endfor %}
+""",
+            ),
+            globals={"now": datetime.now, "as_python": as_python},
+        )
+        self.line_separator = self.plugin_config.get_or_default(
             "line-separator",
             "\n",
         )
-        self.header = plugin_config.get_or_default(
-            "header",
-            """\
-\"\"\"Auto-generated by poetry-plugin-package-info at {file-write-time}.\"\"\"
-
-
-class PackageInfo:
-""",
+        self.generators = self.load_generators(
+            self.plugin_config.get_or_default(
+                "generators",
+                {
+                    "git": (
+                        "poetry_plugin_package_info"
+                        ".generators.git:"
+                        "GitPropertyGenerator"
+                    ),
+                    "project": (
+                        "poetry_plugin_package_info"
+                        ".generators.project:"
+                        "ProjectPropertyGenerator"
+                    ),
+                },
+            ),
         )
-        self.footer = plugin_config.get_or_default("footer", "")
-        self.indent = plugin_config.get_or_default("indent", 4)
-        self.include = plugin_config.get_or_default(
-            "include",
-            [
-                "project-name",
-                "project-description",
-                "project-version",
-                "project-authors",
-                "project-license",
-                "project-classifiers",
-                "project-documentation",
-                "project-repository",
-                "project-homepage",
-                "project-maintainers",
-                "project-keywords",
-                "git-commit-id",
-                "git-commit-author-name",
-                "git-commit-author-email",
-                "git-commit-timestamp",
-                "git-branch-name",
-                "git-branch-path",
-                "git-is-dirty",
-                "git-is-dirty-excluding-untracked",
-                "git-has-staged-changes",
-                "git-has-unstaged-changes",
-                "git-has-untracked-changes",
-            ],
+        self.include = self.parse_include_property_configs(
+            self.plugin_config.get_or_default(
+                "include",
+                [
+                    "project-name",
+                    "project-description",
+                    "project-version",
+                    "project-authors",
+                    "project-license",
+                    "project-classifiers",
+                    "project-documentation",
+                    "project-repository",
+                    "project-homepage",
+                    "project-maintainers",
+                    "project-keywords",
+                    "git-commit-id",
+                    "git-commit-author-name",
+                    "git-commit-author-email",
+                    "git-commit-timestamp",
+                    "git-branch-name",
+                    "git-branch-path",
+                    "git-is-dirty",
+                    "git-is-dirty-excluding-untracked",
+                    "git-has-staged-changes",
+                    "git-has-unstaged-changes",
+                    "git-has-untracked-changes",
+                ],
+            ),
         )
-        self.git_search_parent_directories = plugin_config.get_or_default(
-            "git-search-parent-directories",
-            default=False,
-        )
-        try:
-            self.git_repo = GitRepo(
-                self.pyproject_file_dir,
-                search_parent_directories=self.git_search_parent_directories,
-            )
-
-            # Check there is at least one commit in the repo.
-            try:
-                self.git_repo.head.commit  # noqa: B018
-            except ValueError as e:
-                if len(e.args) > 0 and e.args[0].startswith("Reference at"):
-                    self.git_is_bare = True
-        except InvalidGitRepositoryError:
-            self.git_repo = None
 
         self.initialized = True
 
     def activate(
-        self: "GeneratePackageInfoApplicationPlugin",
+        self: "PackageInfoApplicationPlugin",
         application: Application,
     ) -> None:
         """
@@ -494,7 +695,7 @@ class PackageInfo:
         )
 
     def on_terminate(
-        self: "GeneratePackageInfoApplicationPlugin",
+        self: "PackageInfoApplicationPlugin",
         event: Event,
         event_name: str,  # noqa: ARG002
         dispatcher: EventDispatcher,  # noqa: ARG002
@@ -539,277 +740,8 @@ class PackageInfo:
                     out,
                 )
 
-    def write_git_property(
-        self: "GeneratePackageInfoApplicationPlugin",
-        package_info_file_stream: typing.TextIO,
-        item: Any,  # noqa: ignore[ANN401]
-        repo_handler: Callable[[GitRepo], Any],
-    ) -> None:
-        """
-        Write a git property to the stream.
-
-        :param package_info_file_stream: The stream to write to.
-        :param repo_handler: Function to extract the value from a git Repo.
-        :param item: The property configuration.
-        :return: None
-        """
-        value = repo_handler(
-            GitRepo(self.pyproject_file_dir, search_parent_directories=True),
-        )
-        self.write_property_object(package_info_file_stream, item, value)
-
-    def write_project_property(
-        self: "GeneratePackageInfoApplicationPlugin",
-        package_info_file_stream: typing.TextIO,
-        param: str,
-        item: InlineTable | str,
-    ) -> None:
-        """
-        Write a project property to the stream.
-
-        :param package_info_file_stream: The stream to write to.
-        :param param: The name of the git property.
-        :param variable_name: The name to give the variable in the stream.
-        :return: None
-        """
-        tool_poetry_section: ContainerWrapper = ContainerWrapper(
-            self.application.poetry.pyproject.data.get("tool"),
-        ).get_or_error("poetry")
-        value = tool_poetry_section.get_or_default(param, None)
-        self.write_property_object(package_info_file_stream, item, value)
-
-    def write_property_object(
-        self: "GeneratePackageInfoApplicationPlugin",
-        package_info_file_stream: typing.TextIO,
-        item: str | InlineTable,
-        value: Any,  # noqa: ANN401
-    ) -> None:
-        """
-        Write a property to the stream.
-
-        :param package_info_file_stream: The stream to write to.
-        :param item: The configuration item for the property.
-        :param value: The value to assign to the variable.
-        :return: None
-        """
-        variable_name: str
-        if isinstance(item, InlineTable) and "variable_name" in item:
-            variable_name = str(item["variable_name"])
-        elif isinstance(item, InlineTable) and "property" in item:
-            variable_name = str(item["property"]).replace("-", "_")
-        elif isinstance(item, InlineTable) and "property" not in item:
-            raise MissingPropertyFromIncludeConfigItemError
-        else:
-            variable_name = str(item).replace("-", "_")
-
-        if value is not None:
-            indent = self.indent
-            variable_type = get_variable_type(value)
-            value = self.to_python(indent, value)
-            value = self.adjust_to_fit(indent, value)
-            package_info_file_stream.write(" " * self.indent)
-            package_info_file_stream.write(
-                f"{variable_name}: {variable_type} = {value}",
-            )
-            package_info_file_stream.write(self.line_separator)
-
-    def adjust_to_fit(
-        self: "GeneratePackageInfoApplicationPlugin",
-        indent: int,
-        value: Any,  # noqa: ANN401
-    ) -> Any:  # noqa: ANN401
-        """
-        Adjust any strings that would excess the line-length.
-
-        :param indent: The number of characters to indent strings.
-        :param value: The value to adjust.
-        :return: Either original value, or, a multiline string that fits
-                 within the line-length.
-        """
-        if (
-            not isinstance(value, str)
-            or not value.startswith('"')
-            or len(value) <= self.line_length - indent - 2
-        ):
-            return value
-
-        new_value = "("
-        new_value += self.line_separator
-        while len(value) > self.line_length - indent - 2:
-            if new_value:
-                new_value += " " * indent
-
-            new_value += " " * self.indent
-            new_value += value[: self.line_length - indent - 2]
-            new_value += '"'
-            new_value += self.line_separator
-            value = '"' + value[self.line_length - indent - 2 :]
-
-        new_value += " " * self.indent
-        new_value += " " * indent
-        new_value += value
-        new_value += self.line_separator
-        new_value += " " * self.indent
-        new_value += ")"
-        return new_value
-
-    def to_python(
-        self: "GeneratePackageInfoApplicationPlugin",
-        indent: int,
-        value: Any,  # noqa: ANN401
-    ) -> Any:  # noqa: ANN401
-        """
-        Try to turn the object into a valid python code value.
-
-        :param indent: The number of spaces to indent the value.
-        :param value: The value to convert to python code.
-        :return: A python code string, or, the original value.
-        """
-        if isinstance(value, datetime):
-            return '"' + value.isoformat() + '"'
-
-        if isinstance(value, Array):
-            new_value = "["
-            new_value += self.line_separator
-
-            for i in value:
-                new_value += " " * self.indent
-                new_value += " " * indent
-                new_value += self.to_python(indent, i)
-                new_value += ","
-                new_value += self.line_separator
-
-            new_value += " " * self.indent
-            new_value += "]"
-            return new_value
-
-        if isinstance(value, str) and not value.startswith('"'):
-            new_value = '"'
-            new_value += value
-            new_value += '"'
-            return self.adjust_to_fit(
-                indent,
-                new_value,
-            )
-
-        return value
-
-    def write_header(
-        self: "GeneratePackageInfoApplicationPlugin",
-        package_info_file_stream: typing.TextIO,
-    ) -> None:
-        """
-        Write the header to the file.
-
-        :param package_info_file_stream: stream to write to
-        :return: None
-        """
-        package_info_file_stream.write(
-            self.header.replace(
-                "{file-write-time}",
-                datetime.now(tz=timezone.utc)
-                .replace(microsecond=0)
-                .isoformat()
-                .replace("+00:00", "Z"),
-            ),
-        )
-        if not self.header.endswith(self.line_separator):
-            package_info_file_stream.write(self.line_separator)
-
-    def handle_git_properties(
-        self: "GeneratePackageInfoApplicationPlugin",
-        package_info_file_stream: typing.TextIO,
-        git_property_name: str,
-        item: Any,  # noqa: ignore[ANN401]
-    ) -> None:
-        """Handles processing of any properties related to git."""
-        git_lookup_method: Callable[[GitRepo], Any]
-        match git_property_name:
-            case "commit-id":
-                git_lookup_method = (
-                    (lambda repo: repo.head.commit.hexsha)
-                    if not self.git_is_bare
-                    else lambda _: None
-                )
-            case "commit-author-name":
-                git_lookup_method = (
-                    (lambda repo: repo.head.commit.author.name)
-                    if not self.git_is_bare
-                    else lambda _: None
-                )
-            case "commit-author-email":
-                git_lookup_method = (
-                    (lambda repo: repo.head.commit.author.email)
-                    if not self.git_is_bare
-                    else lambda _: None
-                )
-            case "commit-timestamp":
-                git_lookup_method = (
-                    (lambda repo: repo.head.commit.committed_datetime)
-                    if not self.git_is_bare
-                    else lambda _: None
-                )
-            case "is-dirty":
-
-                def git_lookup_method(repo: GitRepo) -> bool:
-                    return repo.is_dirty(  # type: ignore[no-any-return]
-                        untracked_files=True,
-                    )
-
-            case "is-dirty-excluding-untracked":
-
-                def git_lookup_method(repo: GitRepo) -> bool:
-                    return repo.is_dirty(  # type: ignore[no-any-return]
-                        untracked_files=False,
-                    )
-
-            case "has-staged-changes":
-                git_lookup_method = (
-                    (
-                        lambda repo: len(
-                            repo.index.diff("HEAD"),
-                        )
-                        > 0
-                    )
-                    if not self.git_is_bare
-                    else lambda _: False
-                )
-            case "has-unstaged-changes":
-
-                def git_lookup_method(repo: GitRepo) -> bool:
-                    return len(repo.index.diff(None)) > 0
-
-            case "has-untracked-changes":
-
-                def git_lookup_method(repo: GitRepo) -> bool:
-                    return len(repo.untracked_files) > 0
-
-            case "branch-name":
-
-                def git_lookup_method(
-                    repo: GitRepo,
-                ) -> Any:  # noqa: ANN401
-                    return repo.active_branch.name
-
-            case "branch-path":
-
-                def git_lookup_method(
-                    repo: GitRepo,
-                ) -> Any:  # noqa: ANN401
-                    return repo.active_branch.path
-
-            case _:
-                raise UnsupportedIncludeItemError(
-                    f"git-{git_property_name}",
-                )
-        self.write_git_property(
-            package_info_file_stream,
-            item,
-            git_lookup_method,
-        )
-
     def update_wheel(
-        self: "GeneratePackageInfoApplicationPlugin",
+        self: "PackageInfoApplicationPlugin",
         wheel_file: Path,
         out: IO,
     ) -> None:
