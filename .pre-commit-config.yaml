@@ -37,6 +37,14 @@ repos:
 
   - repo: local
     hooks:
+      - id: poetry
+        name: poetry
+        entry: "pip install poetry; poetry install"
+        language: "python"
+        pass_filenames: false
+
+  - repo: local
+    hooks:
       - id: ruff
         name: ruff
         entry: "poetry run ruff --fix"

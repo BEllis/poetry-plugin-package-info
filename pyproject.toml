@@ -79,6 +79,10 @@ ignore_missing_imports = true
 module = "git"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "freezegun"
+ignore_missing_imports = true
+
 [tool.coverage.run]
 relative_files = true
 source = ["."]
