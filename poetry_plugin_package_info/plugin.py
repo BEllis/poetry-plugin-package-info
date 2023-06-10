@@ -39,7 +39,7 @@ from cleo.events.event import Event
 from cleo.events.event_dispatcher import EventDispatcher
 from cleo.io.io import IO
 from git import InvalidGitRepositoryError
-from git import Repo as GitRepo  # type: ignore[attr-defined]
+from git import Repo as GitRepo
 from poetry.console.application import Application
 from poetry.console.commands.build import BuildCommand
 from poetry.core.masonry.builder import Builder
@@ -94,7 +94,7 @@ class UnsupportedIncludeItemError(Exception):
         super().__init__(f"Unsupported value in includes '{include_value}'")
 
 
-class GeneratePackageInfoCommand(Command):
+class GeneratePackageInfoCommand(Command):  # type: ignore[misc]
     """
     'generate-package-info' poetry command.
 
@@ -266,7 +266,9 @@ def get_variable_type(value: Any) -> str:  # noqa: ANN401
     return "str"
 
 
-class GeneratePackageInfoApplicationPlugin(ApplicationPlugin):
+class GeneratePackageInfoApplicationPlugin(
+    ApplicationPlugin,  # type: ignore[misc]
+):
     """
     Poetry Plugin to add package_info.py file generation.
 
@@ -719,7 +721,7 @@ class PackageInfo:
                 git_lookup_method = (
                     (lambda repo: repo.head.commit.hexsha)
                     if not self.git_is_bare
-                    else lambda _: None  # type: ignore[return-value]
+                    else lambda _: None
                 )
             case "commit-author-name":
                 git_lookup_method = (
@@ -737,17 +739,21 @@ class PackageInfo:
                 git_lookup_method = (
                     (lambda repo: repo.head.commit.committed_datetime)
                     if not self.git_is_bare
-                    else lambda _: None  # type: ignore[return-value]
+                    else lambda _: None
                 )
             case "is-dirty":
 
                 def git_lookup_method(repo: GitRepo) -> bool:
-                    return repo.is_dirty(untracked_files=True)
+                    return repo.is_dirty(  # type: ignore[no-any-return]
+                        untracked_files=True,
+                    )
 
             case "is-dirty-excluding-untracked":
 
                 def git_lookup_method(repo: GitRepo) -> bool:
-                    return repo.is_dirty(untracked_files=False)
+                    return repo.is_dirty(  # type: ignore[no-any-return]
+                        untracked_files=False,
+                    )
 
             case "has-staged-changes":
                 git_lookup_method = (

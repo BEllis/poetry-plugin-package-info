@@ -35,26 +35,12 @@ repos:
     hooks:
       - id: codespell
 
-  - repo: local
-    hooks:
-      - id: poetry
-        name: poetry
-        entry: "pip install poetry; poetry install"
-        language: "python"
-        pass_filenames: false
-
-  - repo: local
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: v0.0.272
     hooks:
       - id: ruff
-        name: ruff
-        entry: "poetry run ruff --fix"
-        language: "python"
-        'types_or': ["python", "pyi"]
 
-  - repo: local
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.3.0
     hooks:
       - id: mypy
-        name: mypy
-        entry: "poetry run mypy"
-        language: "python"
-        'types_or': ["python", "pyi"]

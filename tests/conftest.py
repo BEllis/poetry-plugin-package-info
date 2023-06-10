@@ -24,7 +24,7 @@ class ProjectFactory(Protocol):
         ...
 
 
-@pytest.fixture()
+@pytest.fixture()  # type: ignore[misc]
 def project_factory(
     tmp_path: Path,
     config: Config,

@@ -18,12 +18,12 @@ def get_fixture_root() -> Path:
     return Path(__file__).parent / "fixtures"
 
 
-@pytest.fixture()
+@pytest.fixture()  # type: ignore[misc]
 def fixture_root() -> Path:
     return get_fixture_root()
 
 
-@pytest.fixture(
+@pytest.fixture(  # type: ignore[misc]
     params=[
         fixture_dir.name
         for fixture_dir in get_fixture_root().iterdir()
@@ -72,14 +72,14 @@ def fixture_path(
         (fixture_path / ".gitignore").rename(fixture_path / "_gitignore")
 
 
-@pytest.fixture()
+@pytest.fixture()  # type: ignore[misc]
 def poetry(
     fixture_path: Path,
 ) -> Poetry:
     return Factory().create_poetry(fixture_path)
 
 
-@pytest.fixture()
+@pytest.fixture()  # type: ignore[misc]
 def app(poetry: Poetry) -> PoetryTestApplication:
     return PoetryTestApplication(poetry)
 
