@@ -127,7 +127,6 @@ class GeneratePackageInfoCommand(Command):  # type: ignore[misc]
 
         :return: A status code indicating success (0) or failure (not 0).
         """
-        self._plugin.initialise()
         return self._plugin.generate_package_info(self.io)
 
 
@@ -367,6 +366,7 @@ class GeneratePackageInfoApplicationPlugin(
         :param _: The IO channel to log console messages to.
         :return: A status code indicating success(0) or failure (non-zero)
         """
+        self.initialise()
         with Path(self.package_info_absolute_file_path).open(
             "w",
         ) as package_info_file_stream:

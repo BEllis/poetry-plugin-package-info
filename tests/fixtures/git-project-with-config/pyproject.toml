@@ -59,6 +59,8 @@ footer = """# This is a footer
 
 # with multiple lines"""
 
+indent = 0
+
 # Search parent directories (relative to pyproject.toml) for .git
 git-search-parent-directories = true
 
