@@ -6,7 +6,6 @@
 [![Python Versions](https://img.shields.io/pypi/pyversions/poetry-plugin-package-info)](https://pypi.org/project/poetry-plugin-package-info)
 [![Code coverage Status](https://codecov.io/gh/bellis/poetry-plugin-package-info/branch/main/graph/badge.svg)](https://codecov.io/gh/bellis/poetry-plugin-package-info)
 [![PyTest](https://github.com/bellis/poetry-plugin-package-info/workflows/test/badge.svg)](https://github.com/bellis/poetry-plugin-package-info/actions?query=workflow%3Atest)
-[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/BEllis/poetry-plugin-package-info/main.svg)](https://results.pre-commit.ci/latest/github/BEllis/poetry-plugin-package-info/main)
 [![Download Stats](https://img.shields.io/pypi/dm/poetry-plugin-package-info)](https://pypistats.org/packages/poetry-plugin-package-info)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
