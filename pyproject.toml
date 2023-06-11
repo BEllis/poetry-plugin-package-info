@@ -39,6 +39,7 @@ gitpython = "^3.1.31"
 mypy = "^1.3.0"
 black = "^23.3.0"
 jinja2 = "^3.1.2"
+colorama = "^0.4.6"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -53,7 +54,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.plugins."poetry.application.plugin"]
-package-info = "poetry_plugin_package_info.plugin:GeneratePackageInfoApplicationPlugin"
+package-info = "poetry_plugin_package_info.plugin:PackageInfoApplicationPlugin"
 
 [tool.black]
 line-length = 79
@@ -111,4 +112,4 @@ target-version = "py310"
 skip = '.git,.coverage,.mypy_cache,dist,poetry.lock'
 
 [tool.poetry-plugin-package-info]
-patch-wheels = true
+patch-build-formats = "all"

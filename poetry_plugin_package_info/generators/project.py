@@ -27,9 +27,9 @@ from typing import Any
 
 from poetry_plugin_package_info.plugin import (
     ContainerWrapper,
-    IncludePropertyConfig,
     PackageInfoApplicationPlugin,
     Property,
+    PropertyConfig,
     PropertyGenerator,
 )
 
@@ -68,16 +68,16 @@ class ProjectPropertyGenerator(PropertyGenerator):
 
     def generate_property(
         self: "ProjectPropertyGenerator",
-        include_config: IncludePropertyConfig,
+        property_config: PropertyConfig,
     ) -> Property:
         """Generate the property for the given include configuration."""
         value = self.tool_poetry_section.get_or_default(
-            include_config.property_name,
+            property_config.property_name,
             None,
         )
-        property_type = get_type_for_property(include_config.property_name)
+        property_type = get_type_for_property(property_config.property_name)
         return Property(
-            include_config=include_config,
+            property_config=property_config,
             property_value=value.unwrap() if value is not None else None,
             property_type=property_type,
             metadata={},

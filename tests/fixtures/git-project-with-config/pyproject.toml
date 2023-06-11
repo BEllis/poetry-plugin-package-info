@@ -43,29 +43,11 @@ patch-wheels = true
 # The path relative to the pyproject.toml file
 package-info-file-path = "my_package_info.py"
 
-# The line length to fit python code into.
-line-length = 57
-
-# The line separate to use.
-line-separator = "\r\n"
-
-# Any header code to put at the top of the file.
-header = """# This is a header
-
-# with multiple lines"""
-
-# Any foot code to put at the bottom of the file.
-footer = """# This is a footer
-
-# with multiple lines"""
-
-indent = 0
-
 # Search parent directories (relative to pyproject.toml) for .git
 git-search-parent-directories = true
 
 # ordered list of variables to include in the file.
-include = [
+properties = [
     "project-name",
     { "property" = "project-description" },
     "project-classifiers",

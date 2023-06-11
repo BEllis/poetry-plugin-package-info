@@ -26,6 +26,8 @@ SOFTWARE.
 """
 import importlib.metadata
 import io
+import tarfile
+import tempfile
 import typing
 import zipfile
 from abc import ABC, abstractmethod
@@ -40,11 +42,14 @@ from cleo.events.console_terminate_event import ConsoleTerminateEvent
 from cleo.events.event import Event
 from cleo.events.event_dispatcher import EventDispatcher
 from cleo.io.io import IO
+from colorama import Fore
 from jinja2 import Environment, Template
 from poetry.console.application import Application
 from poetry.console.commands.build import BuildCommand
 from poetry.core.masonry.builder import Builder
+from poetry.core.masonry.builders.sdist import SdistBuilder
 from poetry.core.masonry.builders.wheel import WheelBuilder
+from poetry.core.masonry.utils.helpers import distribution_name
 from poetry.plugins.application_plugin import ApplicationPlugin
 from tomlkit.container import Container, OutOfOrderTableProxy
 from tomlkit.items import AbstractTable, Array, InlineTable
@@ -98,7 +103,7 @@ def as_python(value: Any) -> str:
     return str(value)
 
 
-class IncludePropertyConfig(typing.NamedTuple):
+class PropertyConfig(typing.NamedTuple):
     """Configuration for properties to be included."""
 
     property_generator: "PropertyGenerator"
@@ -110,7 +115,7 @@ class IncludePropertyConfig(typing.NamedTuple):
 class Property(typing.NamedTuple):
     """A generated property."""
 
-    include_config: IncludePropertyConfig
+    property_config: PropertyConfig
     property_value: Any
     property_type: type
     metadata: dict[str, Any]
@@ -133,7 +138,7 @@ class PropertyGenerator(ABC):
     @abstractmethod
     def generate_property(
         self: "PropertyGenerator",
-        include_config: IncludePropertyConfig,
+        property_config: PropertyConfig,
     ) -> Property:
         """Generate the property for the given include configuration."""
 
@@ -413,12 +418,12 @@ class PackageInfoApplicationPlugin(
     initialized: bool = False
     application: Application
     default_src_directory: Path
-    patch_wheels: bool
+    patch_build_formats: list[str]
     pyproject_file_dir: Path
     formatter: ContentFormatter
     template: Template
     line_separator: str
-    include: list[IncludePropertyConfig]
+    property_configs: list[PropertyConfig]
     package_info_relative_file_path: Path
     package_info_absolute_file_path: Path
     plugin_config: ContainerWrapper
@@ -449,7 +454,7 @@ class PackageInfoApplicationPlugin(
                                          package_info.py file content to.
         """
         properties: list[Property] = []
-        for include in self.include:
+        for include in self.property_configs:
             properties.append(
                 include.property_generator.generate_property(include),
             )
@@ -483,11 +488,11 @@ class PackageInfoApplicationPlugin(
 
     def parse_include_property_configs(
         self: "PackageInfoApplicationPlugin",
-        include_config: list[Any],
-    ) -> list[IncludePropertyConfig]:
+        property_configs: list[Any],
+    ) -> list[PropertyConfig]:
         """Parse the property configurations."""
         includes = []
-        for item in include_config:
+        for item in property_configs:
             if isinstance(item, str):
                 property_generator = self.generators.get(
                     item.split("-", maxsplit=1)[0],
@@ -504,7 +509,7 @@ class PackageInfoApplicationPlugin(
                 )
                 metadata: dict[str, Any] = {}
                 includes.append(
-                    IncludePropertyConfig(
+                    PropertyConfig(
                         property_generator,
                         property_name,
                         variable_name,
@@ -533,7 +538,7 @@ class PackageInfoApplicationPlugin(
                 )
                 metadata = item["metadata"] if "metadata" in item else {}
                 includes.append(
-                    IncludePropertyConfig(
+                    PropertyConfig(
                         property_generator,
                         property_name,
                         variable_name,
@@ -570,25 +575,36 @@ class PackageInfoApplicationPlugin(
         self.pyproject_file_dir = (
             self.application.poetry.pyproject.file.path.parent
         )
+
         self.default_src_directory = Path(
             self.application.poetry.package.name.replace("-", "_"),
         )
+
         self.plugin_config: ContainerWrapper = ContainerWrapper(
             self.application.poetry.pyproject.data.get("tool"),
         ).get_or_empty("poetry-plugin-package-info")
-        self.patch_wheels = self.plugin_config.get_or_default(
-            "patch-wheels",
-            default=False,
+
+        self.patch_build_formats = self.plugin_config.get_or_default(
+            "patch-build-formats",
+            default=[],
         )
+        if isinstance(self.patch_build_formats, str):
+            if not self.patch_build_formats:
+                self.patch_build_formats = []
+            else:
+                self.patch_build_formats = [self.patch_build_formats]
+
         self.package_info_relative_file_path = (
             self.plugin_config.get_or_default(
                 "package-info-file-path",
                 f"{self.default_src_directory}/package_info.py",
             )
         )
+
         self.package_info_absolute_file_path = (
             self.pyproject_file_dir / self.package_info_relative_file_path
         )
+
         # PEP-8 specifies 79 as recommended.
         self.formatter = self.load_formatter(
             self.plugin_config.get_or_default(
@@ -596,6 +612,7 @@ class PackageInfoApplicationPlugin(
                 "poetry_plugin_package_info.formatters.black:BlackContentFormatter",
             ),
         )
+
         env = Environment()
         self.template = env.from_string(
             self.plugin_config.get_or_default(
@@ -607,10 +624,9 @@ class PackageInfoApplicationPlugin(
 {% for import in imports %}
 import {{import}}
 {% endfor %}
-
 class PackageInfo:
 {% for property in properties %}\
-{{ "    " }}{{property.include_config.variable_name}}: \
+{{ "    " }}{{property.property_config.variable_name}}: \
 {{as_python(property.property_type)}} = \
 {{as_python(property.property_value)}}
 {% endfor %}
@@ -639,9 +655,9 @@ class PackageInfo:
                 },
             ),
         )
-        self.include = self.parse_include_property_configs(
+        self.property_configs = self.parse_include_property_configs(
             self.plugin_config.get_or_default(
-                "include",
+                "properties",
                 [
                     "project-name",
                     "project-description",
@@ -719,9 +735,10 @@ class PackageInfo:
         out = event.io
         self.initialise()
 
-        if not self.patch_wheels:
+        if len(self.patch_build_formats) == 0:
             return
 
+        format_all = "all" in self.patch_build_formats
         fmt = command.option("format") or "all"
         builder = Builder(command.poetry)
         if fmt in builder._formats:  # noqa: SLF001
@@ -732,12 +749,35 @@ class PackageInfo:
             raise ValueError(f"Unsupported format: {fmt}")  # noqa: TRY003
 
         for builder_type in builder_types:
-            if issubclass(builder_type, WheelBuilder):
+            if issubclass(builder_type, WheelBuilder) and (
+                builder_type.format in self.patch_build_formats or format_all
+            ):
                 builder_instance = builder_type(self.application.poetry)
                 self.update_wheel(
                     Path(builder_instance.default_target_dir)
                     / builder_instance.wheel_filename,
                     out,
+                )
+            elif issubclass(builder_type, SdistBuilder) and (
+                builder_type.format in self.patch_build_formats or format_all
+            ):
+                builder_instance = builder_type(self.application.poetry)
+                dist_name = distribution_name(
+                    self.application.poetry.package.name,
+                )
+                version = builder_instance._meta.version  # noqa: SLF001
+                tar_file_name = f"{dist_name!s}-{version}.tar.gz"
+                self.update_sdist(
+                    builder_instance.default_target_dir / tar_file_name,
+                    out,
+                )
+            elif format_all:
+                out.write_line(
+                    f"""\
+[{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: \
+{Fore.YELLOW}Skipped unsupported distribution format \
+{builder_type.format}{Fore.RESET}\
+                """,
                 )
 
     def update_wheel(
@@ -752,7 +792,9 @@ class PackageInfo:
 
         out.write_line(
             f"""\
-Patching {wheel_file!s} with {self.package_info_relative_file_path}\
+[{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: Patching {Fore.GREEN}\
+{wheel_file.relative_to(self.pyproject_file_dir)!s}{Fore.RESET} with \
+{Fore.GREEN}{self.package_info_relative_file_path}{Fore.RESET}\
 """,
         )
         with zipfile.ZipFile(
@@ -761,3 +803,88 @@ Patching {wheel_file!s} with {self.package_info_relative_file_path}\
             compression=zipfile.ZIP_DEFLATED,
         ) as zip_file:
             zip_file.writestr(str(self.package_info_relative_file_path), data)
+
+    def update_sdist(
+        self: "PackageInfoApplicationPlugin",
+        tar_gz_file: Path,
+        out: IO,
+    ) -> None:
+        """Update the wheel distribution with the package_info.py file."""
+        with io.StringIO() as package_info_py_stream:
+            self.write_package_info_py(package_info_py_stream)
+            data = package_info_py_stream.getvalue()
+
+        out.write_line(
+            f"""\
+[{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: Patching \
+{Fore.GREEN}{tar_gz_file.relative_to(self.pyproject_file_dir)!s}\
+{Fore.RESET} with {Fore.GREEN}{self.package_info_relative_file_path}\
+{Fore.RESET}\
+        """,
+        )
+
+        append_tar_file(
+            data.encode("utf-8"),
+            str(self.package_info_relative_file_path),
+            tar_gz_file,
+        )
+
+
+def append_tar_file(
+    data_bytes: bytes,
+    file_name: str,
+    tar_file_path: Path,
+    *,
+    replace: bool = True,
+) -> None:
+    """Append data to an tar file if not already there, or if replace=True."""
+    if not Path(tar_file_path).is_file():
+        return
+
+    compression = get_compression(tar_file_path)
+
+    with tempfile.TemporaryDirectory() as _tempdir:
+        tempdir = Path(_tempdir)
+        tmp_path = tempdir / ("tmp.tar." + compression)
+
+        with tarfile.open(tar_file_path, "r:" + compression) as tar:
+            if not replace and file_name in (member.name for member in tar):
+                return
+
+            fileobj = io.BytesIO(data_bytes)
+            tarinfo = tarfile.TarInfo(file_name)
+            tarinfo.size = len(fileobj.getvalue())
+
+            with tarfile.open(tmp_path, "w:" + compression) as tmp:
+                for member in tar:
+                    if member.name != file_name:
+                        tmp.addfile(member, tar.extractfile(member.name))
+                tmp.addfile(tarinfo, fileobj)
+
+        tmp_path.rename(tar_file_path)
+
+
+def get_compression(filename: Path) -> str:
+    """Determine the compression type of a tar file."""
+    suffixes = filename.suffixes
+    tar, compression = (s.lstrip(".") for s in suffixes[-2:])
+
+    if tar == "tgz":
+        if compression:
+            raise RuntimeError(
+                "Too much suffixes, cannot infer compression scheme from \
+                {}".format(
+                    "".join(suffixes),
+                ),
+            )
+        return "gz"
+
+    if tar != "tar":
+        raise RuntimeError(  # noqa: TRY003
+            "Unable to determine tar compression",
+        )
+
+    if not compression:
+        return ""
+
+    return compression

@@ -31,9 +31,9 @@ from git import InvalidGitRepositoryError
 from git import Repo as GitRepo
 
 from poetry_plugin_package_info.plugin import (
-    IncludePropertyConfig,
     PackageInfoApplicationPlugin,
     Property,
+    PropertyConfig,
     PropertyGenerator,
     UnsupportedIncludeItemError,
 )
@@ -79,12 +79,12 @@ class GitPropertyGenerator(PropertyGenerator):
 
     def generate_property(
         self: "GitPropertyGenerator",
-        include_config: IncludePropertyConfig,
+        property_config: PropertyConfig,
     ) -> Property:
         """Generate the property for the given include configuration."""
         property_value: Any = None
         property_type: Any = None
-        match include_config.property_name:
+        match property_config.property_name:
             case "commit-id":
                 property_value = (
                     (
@@ -193,11 +193,11 @@ class GitPropertyGenerator(PropertyGenerator):
 
             case _:
                 raise UnsupportedIncludeItemError(
-                    f"{include_config.property_name}",
+                    f"{property_config.property_name}",
                 )
 
         return Property(
-            include_config=include_config,
+            property_config=property_config,
             property_value=property_value,
             property_type=property_type,
             metadata={"git_is_bare": self.git_is_bare},
