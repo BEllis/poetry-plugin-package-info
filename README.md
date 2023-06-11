@@ -180,7 +180,7 @@ properties = [
     "project-name",
     "project-description",
     "git-commit-id",
-    { "property-generator" = "git", "property-name" = "is-dirty", "variable_name" = "clean_me" }
+    { "property-generator" = "git", "property-name" = "is-dirty", "variable_name" = "clean_me" },
     { "property-name" = "git-is-dirty", "variable_name" = "clean_me_too" }
 ]
 
