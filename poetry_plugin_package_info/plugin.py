@@ -240,7 +240,18 @@ information.\
 
         :return: A status code indicating success (0) or failure (not 0).
         """
-        return self._plugin.generate_package_info(self.io)
+        try:
+            return self._plugin.generate_package_info(self.io)
+        except Exception as e:
+            self.io.write_error_line(
+                f"""\
+[{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: \
+{Fore.RED}Error encountered while generating package_info file\
+ - {e} \
+{Fore.RESET}\
+""",
+            )
+            raise
 
 
 class ContainerWrapper:
@@ -469,7 +480,7 @@ class PackageInfoApplicationPlugin(
 
     def generate_package_info(
         self: "PackageInfoApplicationPlugin",
-        _: IO,
+        out: IO,
     ) -> int:
         """
         Generate a package_info.py file.
@@ -483,6 +494,15 @@ class PackageInfoApplicationPlugin(
             "w",
         ) as package_info_file_stream:
             self.write_package_info_py(package_info_file_stream)
+
+        out.write_line(
+            f"""\
+[{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: \
+Generated file {Fore.GREEN}{
+        Path(self.package_info_absolute_file_path).relative_to(self.pyproject_file_dir)
+        }{Fore.RESET}\
+""",
+        )
 
         return 0
 
@@ -703,14 +723,89 @@ class PackageInfo:
             application.event_dispatcher,
         ).add_listener(
             TERMINATE,
-            self.on_terminate,
+            self.try_on_terminate,
         )
         application.command_loader.register_factory(
             "package-info generate-file",
             lambda: GenerateFilePackageInfoCommand(self),
         )
 
+    def get_builder_types(
+        self: "PackageInfoApplicationPlugin",
+        command: BuildCommand,
+    ) -> list[type[Builder]]:
+        """Get the list of build_types set to run as part of BuildCommand."""
+        fmt = command.option("format") or "all"
+        builder = Builder(command.poetry)
+        if fmt in builder._formats:  # noqa: SLF001
+            return [builder._formats[fmt]]  # noqa: SLF001
+        if fmt == "all":
+            return list(builder._formats.values())  # noqa: SLF001
+
+        raise ValueError(f"Unsupported format: {fmt}")  # noqa: TRY003
+
+    def handle_builder_type(
+        self: "PackageInfoApplicationPlugin",
+        builder_type: type[Builder],
+        out: IO,
+    ) -> None:
+        """Handle and processing for the given builder type."""
+        format_all = "all" in self.patch_build_formats
+        if issubclass(builder_type, WheelBuilder) and (
+            builder_type.format in self.patch_build_formats or format_all
+        ):
+            builder_instance = builder_type(self.application.poetry)
+            self.update_wheel(
+                Path(builder_instance.default_target_dir)
+                / builder_instance.wheel_filename,
+                out,
+            )
+        elif issubclass(builder_type, SdistBuilder) and (
+            builder_type.format in self.patch_build_formats or format_all
+        ):
+            builder_instance = builder_type(self.application.poetry)
+            dist_name = distribution_name(
+                self.application.poetry.package.name,
+            )
+            version = builder_instance._meta.version  # noqa: SLF001
+            tar_file_name = f"{dist_name!s}-{version}.tar.gz"
+            self.update_sdist(
+                builder_instance.default_target_dir / tar_file_name,
+                out,
+            )
+        elif format_all:
+            out.write_line(
+                f"""\
+[{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: \
+{Fore.YELLOW}Skipped unsupported distribution format \
+{builder_type.format}{Fore.RESET}\
+""",
+            )
+
     def on_terminate(
+        self: "PackageInfoApplicationPlugin",
+        command: BuildCommand,
+        out: IO,
+    ) -> None:
+        """
+        Event handler for when an event is triggered.
+
+        Event handler for when an event is triggered on the poetry (cleo) event
+        dispatcher.
+        :param event: The event that was triggered.
+        :param event_name: The name of the vent that was triggered.
+        :param dispatcher: The dispatcher that dispatched the event.
+        :return: None
+        """
+        self.initialise()
+
+        if len(self.patch_build_formats) == 0:
+            return
+
+        for builder_type in self.get_builder_types(command):
+            self.handle_builder_type(builder_type, out)
+
+    def try_on_terminate(
         self: "PackageInfoApplicationPlugin",
         event: Event,
         event_name: str,  # noqa: ARG002
@@ -726,59 +821,25 @@ class PackageInfo:
         :param dispatcher: The dispatcher that dispatched the event.
         :return: None
         """
-        if not isinstance(event, ConsoleTerminateEvent):
-            return
-        command = event.command
-        if not isinstance(command, BuildCommand):
-            return
-
         out = event.io
-        self.initialise()
+        try:
+            if not isinstance(event, ConsoleTerminateEvent):
+                return
+            command = event.command
+            if not isinstance(command, BuildCommand):
+                return
 
-        if len(self.patch_build_formats) == 0:
-            return
-
-        format_all = "all" in self.patch_build_formats
-        fmt = command.option("format") or "all"
-        builder = Builder(command.poetry)
-        if fmt in builder._formats:  # noqa: SLF001
-            builder_types = [builder._formats[fmt]]  # noqa: SLF001
-        elif fmt == "all":
-            builder_types = list(builder._formats.values())  # noqa: SLF001
-        else:
-            raise ValueError(f"Unsupported format: {fmt}")  # noqa: TRY003
-
-        for builder_type in builder_types:
-            if issubclass(builder_type, WheelBuilder) and (
-                builder_type.format in self.patch_build_formats or format_all
-            ):
-                builder_instance = builder_type(self.application.poetry)
-                self.update_wheel(
-                    Path(builder_instance.default_target_dir)
-                    / builder_instance.wheel_filename,
-                    out,
-                )
-            elif issubclass(builder_type, SdistBuilder) and (
-                builder_type.format in self.patch_build_formats or format_all
-            ):
-                builder_instance = builder_type(self.application.poetry)
-                dist_name = distribution_name(
-                    self.application.poetry.package.name,
-                )
-                version = builder_instance._meta.version  # noqa: SLF001
-                tar_file_name = f"{dist_name!s}-{version}.tar.gz"
-                self.update_sdist(
-                    builder_instance.default_target_dir / tar_file_name,
-                    out,
-                )
-            elif format_all:
-                out.write_line(
-                    f"""\
+            self.on_terminate(command, out)
+        except Exception as e:
+            out.write_error_line(
+                f"""\
 [{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: \
-{Fore.YELLOW}Skipped unsupported distribution format \
-{builder_type.format}{Fore.RESET}\
-                """,
-                )
+{Fore.RED}Error encountered while patching distribution files\
+ - {e} \
+{Fore.RESET}\
+""",
+            )
+            raise
 
     def update_wheel(
         self: "PackageInfoApplicationPlugin",
