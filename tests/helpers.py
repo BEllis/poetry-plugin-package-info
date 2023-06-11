@@ -25,8 +25,8 @@ class PoetryTestApplication(Application):  # type: ignore[misc]
 class TestExecutor(Executor):  # type: ignore[misc]
     def __init__(
         self: "TestExecutor",
-        *args: Any,  # noqa: ANN401
-        **kwargs: Any,  # noqa: ANN401
+        *args: Any,
+        **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
 
