@@ -25,6 +25,7 @@ class PackageInfo:
     )
     git_branch_name: str | None = "main"
     git_branch_path: str | None = "refs/heads/main"
+    git_tags: list[str] | None = []
     git_is_dirty: bool | None = True
     git_is_dirty_excluding_untracked: bool | None = True
     git_has_staged_changes: bool | None = False

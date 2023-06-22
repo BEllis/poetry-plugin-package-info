@@ -696,6 +696,7 @@ class PackageInfo:
                     "git-commit-timestamp",
                     "git-branch-name",
                     "git-branch-path",
+                    "git-tags",
                     "git-is-dirty",
                     "git-is-dirty-excluding-untracked",
                     "git-has-staged-changes",

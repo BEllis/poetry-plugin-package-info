@@ -44,6 +44,7 @@ class GitPropertyGenerator(PropertyGenerator):
 
     git_search_parent_directories: bool
     git_is_bare: bool = False
+    detached_head: bool = False
     git_repo: GitRepo | None
 
     def short_name(self: "GitPropertyGenerator") -> str:
@@ -74,6 +75,13 @@ class GitPropertyGenerator(PropertyGenerator):
             except ValueError as e:
                 if len(e.args) > 0 and e.args[0].startswith("Reference at"):
                     self.git_is_bare = True
+
+            # Patch active_branch for detached head case.
+            try:
+                _ = self.git_repo.active_branch
+            except TypeError:
+                self.detached_head = True
+
         except InvalidGitRepositoryError:
             self.git_repo = None
 
@@ -178,7 +186,7 @@ class GitPropertyGenerator(PropertyGenerator):
             case "branch-name":
                 property_value = (
                     self.git_repo.active_branch.name
-                    if self.git_repo is not None
+                    if self.git_repo is not None and not self.detached_head
                     else None
                 )
                 property_type = str | None
@@ -186,10 +194,22 @@ class GitPropertyGenerator(PropertyGenerator):
             case "branch-path":
                 property_value = (
                     self.git_repo.active_branch.path
-                    if self.git_repo is not None
+                    if self.git_repo is not None and not self.detached_head
                     else None
                 )
                 property_type = str | None
+
+            case "tags":
+                property_value = (
+                    [
+                        tag.name
+                        for tag in self.git_repo.tags
+                        if tag.commit == self.git_repo.head.commit
+                    ]
+                    if self.git_repo is not None
+                    else None
+                )
+                property_type = list[str] | None
 
             case _:
                 raise UnsupportedIncludeItemError(

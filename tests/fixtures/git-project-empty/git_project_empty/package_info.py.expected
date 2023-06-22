@@ -23,6 +23,7 @@ class PackageInfo:
     git_commit_timestamp: datetime.datetime | None = None
     git_branch_name: str | None = "main"
     git_branch_path: str | None = "refs/heads/main"
+    git_tags: list[str] | None = []
     git_is_dirty: bool | None = False
     git_is_dirty_excluding_untracked: bool | None = False
     git_has_staged_changes: bool | None = False

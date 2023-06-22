@@ -52,6 +52,9 @@ def fixture_path(
     # Add .git file if needed
     if (fixture_path / "_git").exists():
         git_file.write_text(f"gitdir: {fixture_path}/_git\n")
+        refs_path = fixture_path / "_git" / "refs"
+        (refs_path / "heads").mkdir(parents=True, exist_ok=True)
+        (refs_path / "tags").mkdir(parents=True, exist_ok=True)
 
     yield fixture_path
 

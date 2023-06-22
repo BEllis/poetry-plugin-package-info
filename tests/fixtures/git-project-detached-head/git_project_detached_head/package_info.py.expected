@@ -3,7 +3,7 @@ import datetime
 
 
 class PackageInfo:
-    project_name: str | None = "git-project-staged-changes"
+    project_name: str | None = "git-project-detached-head"
     project_description: str | None = "Some description."
     project_version: str | None = "1.2.3"
     project_authors: list[str] | None = ["Ben Ellis <ben.ellis@softweyr.co.uk>"]
@@ -17,17 +17,17 @@ class PackageInfo:
     project_homepage: str | None = "https://python-poetry.org"
     project_maintainers: list[str] | None = None
     project_keywords: list[str] | None = ["packaging", "dependency", "poetry"]
-    git_commit_id: str | None = "a7038af63e9f07c6402a74ce336be7d8d0e713c8"
+    git_commit_id: str | None = "242697ac2ad243cb2d57b57e6fd0d206a1323b7c"
     git_commit_author_name: str | None = "Ben Ellis"
     git_commit_author_email: str | None = "ben.ellis@softweyr.co.uk"
     git_commit_timestamp: datetime.datetime | None = datetime.datetime.fromisoformat(
-        "2023-06-09T03:34:19+01:00"
+        "2023-06-22T23:22:41+01:00"
     )
-    git_branch_name: str | None = "main"
-    git_branch_path: str | None = "refs/heads/main"
-    git_tags: list[str] | None = []
-    git_is_dirty: bool | None = True
-    git_is_dirty_excluding_untracked: bool | None = True
-    git_has_staged_changes: bool | None = True
+    git_branch_name: str | None = None
+    git_branch_path: str | None = None
+    git_tags: list[str] | None = ["test_tag"]
+    git_is_dirty: bool | None = False
+    git_is_dirty_excluding_untracked: bool | None = False
+    git_has_staged_changes: bool | None = False
     git_has_unstaged_changes: bool | None = False
     git_has_untracked_changes: bool | None = False
