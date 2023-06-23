@@ -49,10 +49,10 @@ git-search-parent-directories = true
 # ordered list of variables to include in the file.
 properties = [
     "project-name",
-    { "property" = "project-description" },
+    { "property-name" = "project-description" },
     "project-classifiers",
     "git-commit-id",
-    { "property" = "git-is-dirty", "variable_name" = "clean_me" },
+    { "property-name" = "git-is-dirty", "variable-name" = "clean_me" },
     "git-has-staged-changes",
     "git-has-unstaged-changes",
 ]
