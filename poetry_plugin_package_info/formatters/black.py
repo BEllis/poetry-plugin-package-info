@@ -1,5 +1,4 @@
 """Black content formatter for applying black formatting to generated code."""
-from typing import cast
 
 import black
 
@@ -21,11 +20,8 @@ class BlackContentFormatter(ContentFormatter):
 
     def format_content(self: "BlackContentFormatter", content: str) -> str:
         """Format the given python file content."""
-        return cast(
-            str,
-            black.format_file_contents(
-                content,
-                fast=False,
-                mode=black.Mode(),
-            ),
+        return black.format_file_contents(
+            content,
+            fast=False,
+            mode=black.mode.Mode(),
         )

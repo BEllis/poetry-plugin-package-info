@@ -24,12 +24,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 """
+import base64
+import hashlib
 import importlib.metadata
 import io
 import tarfile
 import tempfile
+import traceback
 import typing
-import zipfile
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
@@ -37,6 +39,7 @@ from types import NoneType, UnionType
 from typing import Any
 
 from cleo.commands.command import Command
+from cleo.events.console_event import ConsoleEvent
 from cleo.events.console_events import TERMINATE
 from cleo.events.console_terminate_event import ConsoleTerminateEvent
 from cleo.events.event import Event
@@ -53,6 +56,8 @@ from poetry.core.masonry.utils.helpers import distribution_name
 from poetry.plugins.application_plugin import ApplicationPlugin
 from tomlkit.container import Container, OutOfOrderTableProxy
 from tomlkit.items import AbstractTable, Array, InlineTable
+
+from poetry_plugin_package_info import _zipfile
 
 
 def type_as_python(value: type) -> str:
@@ -203,7 +208,7 @@ class UnsupportedIncludeItemError(Exception):
         super().__init__(f"Unsupported value in includes '{include_value}'")
 
 
-class GenerateFilePackageInfoCommand(Command):  # type: ignore[misc]
+class GenerateFilePackageInfoCommand(Command):
     """
     'package-info generate-file' poetry command.
 
@@ -417,7 +422,7 @@ def get_imports_from_properties(properties: list[Property]) -> set[str]:
 
 
 class PackageInfoApplicationPlugin(
-    ApplicationPlugin,  # type: ignore[misc]
+    ApplicationPlugin,
 ):
     """
     Poetry Plugin to add package_info.py file generation.
@@ -537,26 +542,32 @@ Generated file {Fore.GREEN}{
                     ),
                 )
             elif isinstance(item, InlineTable):
+                if "property-name" not in item:
+                    raise ValueError(  # noqa: TRY003
+                        "Missing required property-name attribute.",
+                    )
                 property_generator = self.generators.get(
-                    item["property-generator"]
+                    str(item["property-generator"])  # type: ignore[arg-type]
                     if "property-generator" in item
                     else None,
                     None,
                 )
-                property_name = (
-                    item["property-name"] if "property-name" in item else None
-                )
+                property_name = str(item["property-name"])
                 if property_name is None or property_generator is None:
                     # Ignore invalid includes?
                     continue
                 variable_name = (
-                    item["variable-name"]
+                    str(item["variable-name"])
                     if "variable-name" in item
                     else property_generator.short_name()
                     + "_"
                     + property_name.replace("-", "_")
                 )
-                metadata = item["metadata"] if "metadata" in item else {}
+                metadata = (
+                    typing.cast(dict[str, Any], item["metadata"])
+                    if "metadata" in item
+                    else {}
+                )
                 includes.append(
                     PropertyConfig(
                         property_generator,
@@ -597,7 +608,7 @@ Generated file {Fore.GREEN}{
         )
 
         self.default_src_directory = Path(
-            self.application.poetry.package.name.replace("-", "_"),
+            distribution_name(self.application.poetry.package.name),
         )
 
         self.plugin_config: ContainerWrapper = ContainerWrapper(
@@ -775,11 +786,12 @@ class PackageInfo:
                 out,
             )
         elif format_all:
+            distro_format = builder_type.format  # type: ignore[attr-defined]
             out.write_line(
                 f"""\
 [{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: \
 {Fore.YELLOW}Skipped unsupported distribution format \
-{builder_type.format}{Fore.RESET}\
+{distro_format}{Fore.RESET}\
 """,
             )
 
@@ -822,6 +834,9 @@ class PackageInfo:
         :param dispatcher: The dispatcher that dispatched the event.
         :return: None
         """
+        if not isinstance(event, ConsoleEvent):
+            return
+
         out = event.io
         try:
             if not isinstance(event, ConsoleTerminateEvent):
@@ -836,10 +851,10 @@ class PackageInfo:
                 f"""\
 [{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: \
 {Fore.RED}Error encountered while patching distribution files\
- - {e} \
-{Fore.RESET}\
 """,
             )
+            traceback.print_exception(e, file=out)
+            out.write_error_line(f"{Fore.RESET}")
             raise
 
     def update_wheel(
@@ -859,12 +874,59 @@ class PackageInfo:
 {Fore.GREEN}{self.package_info_relative_file_path}{Fore.RESET}\
 """,
         )
-        with zipfile.ZipFile(
+
+        with _zipfile.ZipFile(
+            str(wheel_file),
+            mode="r",
+            compression=_zipfile.ZIP_DEFLATED,
+        ) as zip_file:
+            record_file_contents = zip_file.read(
+                "poetry_plugin_package_info-0.2.0.dist-info/RECORD",
+            ).decode("utf8")
+
+        digest = hashlib.sha256(data.encode("utf8")).digest()
+        data_hash = (
+            base64.urlsafe_b64encode(digest).rstrip(b"=").decode("utf8")
+        )
+        record_entry = ",".join(
+            (
+                str(self.package_info_relative_file_path),
+                "sha256=" + data_hash,
+                str(len(data)),
+            ),
+        )
+
+        distribution = distribution_name(self.application.poetry.package.name)
+        version = self.application.poetry.package.version
+        dist_info_path = f"{distribution}-{version}.dist-info"
+        record_file_path = f"{dist_info_path}/RECORD"
+
+        record_entries = record_file_contents.splitlines()
+        record_entries.append(record_entry)
+        non_dist_info_files = sorted(
+            [
+                record
+                for record in record_entries
+                if not record.startswith(dist_info_path)
+            ],
+        )
+        dist_info_files = [
+            record
+            for record in record_entries
+            if record.startswith(dist_info_path)
+        ]
+        new_record_file_contents = "\n".join(
+            [*non_dist_info_files, *dist_info_files],
+        )
+
+        with _zipfile.ZipFile(
             str(wheel_file),
             mode="a",
-            compression=zipfile.ZIP_DEFLATED,
+            compression=_zipfile.ZIP_DEFLATED,
         ) as zip_file:
+            zip_file.remove(record_file_path)
             zip_file.writestr(str(self.package_info_relative_file_path), data)
+            zip_file.writestr(record_file_path, new_record_file_contents)
 
     def update_sdist(
         self: "PackageInfoApplicationPlugin",

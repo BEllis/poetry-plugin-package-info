@@ -32,11 +32,13 @@ classifiers = [
     "License :: OSI Approved :: MIT License"
 ]
 
+[project]
+dependencies = [ 'poetry >= 1.2', 'mypy == 1.3.0' ]
+
 [tool.poetry.dependencies]
 python = "^3.7"
 poetry = "^1.2"
 gitpython = "^3.1.31"
-mypy = "^1.3.0"
 black = "^23.3.0"
 jinja2 = "^3.1.2"
 colorama = "^0.4.6"
@@ -46,6 +48,7 @@ colorama = "^0.4.6"
 pytest = "^7.3.1"
 coverage = "^7.2.7"
 ruff = "^0.0.271"
+mypy = "^1.3.0"
 codespell = "^2.2.4"
 freezegun = "^1.2.2"
 
@@ -71,7 +74,7 @@ filterwarnings = ["ignore::pytest.PytestCollectionWarning"]
 packages = ['poetry_plugin_package_info', 'tests']
 strict = true
 python_version = "3.10"
-exclude = ['expected_package_info.py']
+exclude = ['expected_package_info.py$', '_zipfile\.py$']
 
 [[tool.mypy.overrides]]
 module = "poetry"
@@ -83,6 +86,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "freezegun"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "colorama"
 ignore_missing_imports = true
 
 [tool.coverage.run]
@@ -104,6 +111,30 @@ flake8-quotes = {inline-quotes = 'single', multiline-quotes = 'double'}
 mccabe = { max-complexity = 10 }
 isort = { known-first-party = ['poetry_plugin_package_info', 'tests'] }
 target-version = "py310"
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "_zipfile.py",
+]
 
 [tool.ruff.per-file-ignores]
 'tests/**/*.py' = ['S101', 'INP001', 'SLF001', 'D', 'PLR0913']

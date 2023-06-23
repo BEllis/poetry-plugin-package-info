@@ -28,7 +28,7 @@ from datetime import datetime
 from typing import Any
 
 from git import InvalidGitRepositoryError
-from git import Repo as GitRepo
+from git.repo import Repo as GitRepo
 
 from poetry_plugin_package_info.plugin import (
     PackageInfoApplicationPlugin,

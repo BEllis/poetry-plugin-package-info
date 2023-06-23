@@ -8,7 +8,7 @@ from poetry.installation.operations.operation import Operation
 from poetry.poetry import Poetry
 
 
-class PoetryTestApplication(Application):  # type: ignore[misc]
+class PoetryTestApplication(Application):
     def __init__(self: "PoetryTestApplication", poetry: Poetry) -> None:
         super().__init__()
         self._poetry = poetry
@@ -22,7 +22,7 @@ class PoetryTestApplication(Application):  # type: ignore[misc]
         self._poetry.set_locker(poetry.locker)
 
 
-class TestExecutor(Executor):  # type: ignore[misc]
+class TestExecutor(Executor):
     def __init__(
         self: "TestExecutor",
         *args: Any,
