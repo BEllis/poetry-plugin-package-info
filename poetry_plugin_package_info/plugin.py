@@ -875,13 +875,18 @@ class PackageInfo:
 """,
         )
 
+        distribution = distribution_name(self.application.poetry.package.name)
+        version = self.application.poetry.package.version
+        dist_info_path = f"{distribution}-{version}.dist-info"
+        record_file_path = f"{dist_info_path}/RECORD"
+
         with _zipfile.ZipFile(
             str(wheel_file),
             mode="r",
             compression=_zipfile.ZIP_DEFLATED,
         ) as zip_file:
             record_file_contents = zip_file.read(
-                "poetry_plugin_package_info-0.2.0.dist-info/RECORD",
+                record_file_path,
             ).decode("utf8")
 
         digest = hashlib.sha256(data.encode("utf8")).digest()
@@ -895,11 +900,6 @@ class PackageInfo:
                 str(len(data)),
             ),
         )
-
-        distribution = distribution_name(self.application.poetry.package.name)
-        version = self.application.poetry.package.version
-        dist_info_path = f"{distribution}-{version}.dist-info"
-        record_file_path = f"{dist_info_path}/RECORD"
 
         record_entries = record_file_contents.splitlines()
         record_entries.append(record_entry)
