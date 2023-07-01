@@ -50,9 +50,11 @@ from jinja2 import Environment, Template
 from poetry.console.application import Application
 from poetry.console.commands.build import BuildCommand
 from poetry.core.masonry.builder import Builder
+from poetry.core.masonry.builders.builder import Builder as BaseBuilder
 from poetry.core.masonry.builders.sdist import SdistBuilder
 from poetry.core.masonry.builders.wheel import WheelBuilder
 from poetry.core.masonry.utils.helpers import distribution_name
+from poetry.core.masonry.utils.package_include import PackageInclude
 from poetry.plugins.application_plugin import ApplicationPlugin
 from tomlkit.container import Container, OutOfOrderTableProxy
 from tomlkit.items import AbstractTable, Array, InlineTable
@@ -252,10 +254,10 @@ information.\
                 f"""\
 [{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: \
 {Fore.RED}Error encountered while generating package_info file\
- - {e} \
-{Fore.RESET}\
-""",
+ """,
             )
+            traceback.print_exception(e, file=self.io)
+            self.io.write_error_line(f"{Fore.RESET}")
             raise
 
 
@@ -495,7 +497,7 @@ class PackageInfoApplicationPlugin(
         :return: A status code indicating success(0) or failure (non-zero)
         """
         self.initialise()
-        with Path(self.package_info_absolute_file_path).open(
+        with self.package_info_absolute_file_path.open(
             "w",
         ) as package_info_file_stream:
             self.write_package_info_py(package_info_file_stream)
@@ -504,7 +506,7 @@ class PackageInfoApplicationPlugin(
             f"""\
 [{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: \
 Generated file {Fore.GREEN}{
-        Path(self.package_info_absolute_file_path).relative_to(self.pyproject_file_dir)
+        self.package_info_absolute_file_path.relative_to(self.pyproject_file_dir)
         }{Fore.RESET}\
 """,
         )
@@ -625,15 +627,15 @@ Generated file {Fore.GREEN}{
             else:
                 self.patch_build_formats = [self.patch_build_formats]
 
-        self.package_info_relative_file_path = (
+        self.package_info_relative_file_path = Path(
             self.plugin_config.get_or_default(
                 "package-info-file-path",
                 f"{self.default_src_directory}/package_info.py",
-            )
+            ),
         )
 
-        self.package_info_absolute_file_path = (
-            self.pyproject_file_dir / self.package_info_relative_file_path
+        self.package_info_absolute_file_path = Path(
+            self.pyproject_file_dir / self.package_info_relative_file_path,
         )
 
         # PEP-8 specifies 79 as recommended.
@@ -756,6 +758,31 @@ class PackageInfo:
 
         raise ValueError(f"Unsupported format: {fmt}")  # noqa: TRY003
 
+    def _determine_package_info_path(
+        self,
+        builder_instance: BaseBuilder,
+    ) -> Path:
+        for include in builder_instance._module.includes:  # noqa: SLF001
+            include.refresh()
+
+            if (
+                isinstance(include, PackageInclude)
+                and include.source
+                and builder_instance.format == "wheel"
+            ):
+                source_root = include.base
+            else:
+                source_root = builder_instance._path  # noqa: SLF001
+
+            if source_root in self.package_info_absolute_file_path.parents:
+                result = self.package_info_absolute_file_path.relative_to(
+                    source_root,
+                )
+                if not builder_instance.is_excluded(result):
+                    return result
+
+        return self.package_info_relative_file_path
+
     def handle_builder_type(
         self: "PackageInfoApplicationPlugin",
         builder_type: type[Builder],
@@ -767,9 +794,13 @@ class PackageInfo:
             builder_type.format in self.patch_build_formats or format_all
         ):
             builder_instance = builder_type(self.application.poetry)
+            package_info_file_dist_path = self._determine_package_info_path(
+                builder_instance,
+            )
             self.update_wheel(
                 Path(builder_instance.default_target_dir)
                 / builder_instance.wheel_filename,
+                package_info_file_dist_path,
                 out,
             )
         elif issubclass(builder_type, SdistBuilder) and (
@@ -781,8 +812,12 @@ class PackageInfo:
             )
             version = builder_instance._meta.version  # noqa: SLF001
             tar_file_name = f"{dist_name!s}-{version}.tar.gz"
+            package_info_file_dist_path = self._determine_package_info_path(
+                builder_instance,
+            )
             self.update_sdist(
                 builder_instance.default_target_dir / tar_file_name,
+                package_info_file_dist_path,
                 out,
             )
         elif format_all:
@@ -860,6 +895,7 @@ class PackageInfo:
     def update_wheel(
         self: "PackageInfoApplicationPlugin",
         wheel_file: Path,
+        package_info_file_dist_path: Path,
         out: IO,
     ) -> None:
         """Update the wheel distribution with the package_info.py file."""
@@ -871,7 +907,7 @@ class PackageInfo:
             f"""\
 [{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: Patching {Fore.GREEN}\
 {wheel_file.relative_to(self.pyproject_file_dir)!s}{Fore.RESET} with \
-{Fore.GREEN}{self.package_info_relative_file_path}{Fore.RESET}\
+{Fore.GREEN}{package_info_file_dist_path}{Fore.RESET}\
 """,
         )
 
@@ -880,6 +916,7 @@ class PackageInfo:
         dist_info_path = f"{distribution}-{version}.dist-info"
         record_file_path = f"{dist_info_path}/RECORD"
 
+        remove_existing_package_info = False
         with _zipfile.ZipFile(
             str(wheel_file),
             mode="r",
@@ -888,6 +925,8 @@ class PackageInfo:
             record_file_contents = zip_file.read(
                 record_file_path,
             ).decode("utf8")
+            if str(package_info_file_dist_path) in zip_file.filelist:
+                remove_existing_package_info = True
 
         digest = hashlib.sha256(data.encode("utf8")).digest()
         data_hash = (
@@ -895,7 +934,7 @@ class PackageInfo:
         )
         record_entry = ",".join(
             (
-                str(self.package_info_relative_file_path),
+                str(package_info_file_dist_path),
                 "sha256=" + data_hash,
                 str(len(data)),
             ),
@@ -925,12 +964,15 @@ class PackageInfo:
             compression=_zipfile.ZIP_DEFLATED,
         ) as zip_file:
             zip_file.remove(record_file_path)
-            zip_file.writestr(str(self.package_info_relative_file_path), data)
+            if remove_existing_package_info:
+                zip_file.remove(str(package_info_file_dist_path))
+            zip_file.writestr(str(package_info_file_dist_path), data)
             zip_file.writestr(record_file_path, new_record_file_contents)
 
     def update_sdist(
         self: "PackageInfoApplicationPlugin",
         tar_gz_file: Path,
+        package_info_file_dist_path: Path,
         out: IO,
     ) -> None:
         """Update the wheel distribution with the package_info.py file."""
@@ -942,14 +984,14 @@ class PackageInfo:
             f"""\
 [{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: Patching \
 {Fore.GREEN}{tar_gz_file.relative_to(self.pyproject_file_dir)!s}\
-{Fore.RESET} with {Fore.GREEN}{self.package_info_relative_file_path}\
+{Fore.RESET} with {Fore.GREEN}{package_info_file_dist_path}\
 {Fore.RESET}\
         """,
         )
 
         append_tar_file(
             data.encode("utf-8"),
-            str(self.package_info_relative_file_path),
+            str(package_info_file_dist_path),
             tar_gz_file,
         )
 
