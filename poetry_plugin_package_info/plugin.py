@@ -761,7 +761,8 @@ class PackageInfo:
     def _determine_package_info_path(
         self,
         builder_instance: BaseBuilder,
-    ) -> Path:
+        out: IO,
+    ) -> Path | None:
         for include in builder_instance._module.includes:  # noqa: SLF001
             include.refresh()
 
@@ -774,12 +775,41 @@ class PackageInfo:
             else:
                 source_root = builder_instance._path  # noqa: SLF001
 
-            if source_root in self.package_info_absolute_file_path.parents:
+            if isinstance(include, PackageInclude):
+                include_path = source_root / include.package
+            else:
+                out.write_line(
+                    f"""\
+[{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: \
+{Fore.RED}ERROR: Plugin does not yet support {include.__class__} includes so
+will skip '{builder_instance.format}' dist.\
+""",
+                )
+                return None
+            if (
+                include_path.is_dir()
+                and include_path
+                in self.package_info_absolute_file_path.parents
+            ) or (
+                not include_path.is_dir()
+                and include_path == self.package_info_absolute_file_path
+            ):
                 result = self.package_info_absolute_file_path.relative_to(
                     source_root,
                 )
                 if not builder_instance.is_excluded(result):
                     return result
+
+        if builder_instance.format == "wheel":
+            out.write_line(
+                f"""\
+[{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: \
+{Fore.YELLOW}WARNING: '{self.package_info_relative_file_path}' is not \
+configured to be included in a package in '{builder_instance.format}' \
+distribution so will be skipped.\
+""",
+            )
+            return None
 
         return self.package_info_relative_file_path
 
@@ -796,13 +826,15 @@ class PackageInfo:
             builder_instance = builder_type(self.application.poetry)
             package_info_file_dist_path = self._determine_package_info_path(
                 builder_instance,
-            )
-            self.update_wheel(
-                Path(builder_instance.default_target_dir)
-                / builder_instance.wheel_filename,
-                package_info_file_dist_path,
                 out,
             )
+            if package_info_file_dist_path is not None:
+                self.update_wheel(
+                    Path(builder_instance.default_target_dir)
+                    / builder_instance.wheel_filename,
+                    package_info_file_dist_path,
+                    out,
+                )
         elif issubclass(builder_type, SdistBuilder) and (
             builder_type.format in self.patch_build_formats or format_all
         ):
@@ -814,18 +846,20 @@ class PackageInfo:
             tar_file_name = f"{dist_name!s}-{version}.tar.gz"
             package_info_file_dist_path = self._determine_package_info_path(
                 builder_instance,
-            )
-            self.update_sdist(
-                builder_instance.default_target_dir / tar_file_name,
-                package_info_file_dist_path,
                 out,
             )
+            if package_info_file_dist_path is not None:
+                self.update_sdist(
+                    builder_instance.default_target_dir / tar_file_name,
+                    package_info_file_dist_path,
+                    out,
+                )
         elif format_all:
             distro_format = builder_type.format  # type: ignore[attr-defined]
             out.write_line(
                 f"""\
 [{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: \
-{Fore.YELLOW}Skipped unsupported distribution format \
+{Fore.YELLOW}WARNING: Skipped unsupported distribution format \
 {distro_format}{Fore.RESET}\
 """,
             )
