@@ -28,6 +28,7 @@ import base64
 import hashlib
 import importlib.metadata
 import io
+import shutil
 import tarfile
 import tempfile
 import traceback
@@ -479,11 +480,12 @@ class PackageInfoApplicationPlugin(
 
         imports = get_imports_from_properties(properties)
 
-        package_info_file_stream.write(
-            self.formatter.format_content(
-                self.template.render(properties=properties, imports=imports),
-            ),
-        )
+        content = self.template.render(properties=properties, imports=imports)
+
+        for formatter in self.formatters:
+            content = formatter.format_content(content)
+
+        package_info_file_stream.write(content)
 
     def generate_package_info(
         self: "PackageInfoApplicationPlugin",
@@ -593,6 +595,10 @@ Generated file {Fore.GREEN}{
             for k, v in generators.items()
         }
 
+    def load_formatters(self, formatters: list[str]) -> list[ContentFormatter]:
+        """Load all the configured formatters."""
+        return [self.load_formatter(formatter) for formatter in formatters]
+
     def load_formatter(
         self: "PackageInfoApplicationPlugin",
         formatter: str,
@@ -639,10 +645,12 @@ Generated file {Fore.GREEN}{
         )
 
         # PEP-8 specifies 79 as recommended.
-        self.formatter = self.load_formatter(
+        self.formatters = self.load_formatters(
             self.plugin_config.get_or_default(
-                "formatter",
-                "poetry_plugin_package_info.formatters.black:BlackContentFormatter",
+                "formatters",
+                [
+                    "poetry_plugin_package_info.formatters.black:BlackContentFormatter",
+                ],
             ),
         )
 
@@ -1065,7 +1073,7 @@ def append_tar_file(
                         tmp.addfile(member, tar.extractfile(member.name))
                 tmp.addfile(tarinfo, fileobj)
 
-        tmp_path.rename(tar_file_path)
+        shutil.move(tmp_path, tar_file_path)
 
 
 def get_compression(filename: Path) -> str:

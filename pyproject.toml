@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "poetry-plugin-package-info"
-version = "0.2.5"
-description = "Plugin for poetry that creates/updates an package_info.py file with various details about the project/package."
+version = "1.0.0"
+description = "Plugin for poetry that creates/updates a package_info.py file with git and project file details."
 authors = ["Ben Ellis <ben.ellis@softweyr.co.uk>"]
 license = "MIT"
 readme = "README.md"
