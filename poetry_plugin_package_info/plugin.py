@@ -17,7 +17,7 @@ copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
@@ -34,7 +34,7 @@ import traceback
 import typing
 from abc import ABC, abstractmethod
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from types import NoneType, UnionType
 from typing import Any
 
@@ -778,14 +778,15 @@ class PackageInfo:
             if isinstance(include, PackageInclude):
                 include_path = source_root / include.package
             else:
-                out.write_line(
-                    f"""\
-[{Fore.BLUE}poetry-plugin-package-info{Fore.RESET}]: \
-{Fore.RED}ERROR: Plugin does not yet support {include.__class__} includes so
-will skip '{builder_instance.format}' dist.\
-""",
+                include_pattern = (
+                    f"{source_root!s}/{include._include}"  # noqa: SLF001]
                 )
-                return None
+                if PurePath(self.package_info_absolute_file_path).match(
+                    include_pattern,
+                ):
+                    include_path = self.package_info_absolute_file_path
+                else:
+                    continue
             if (
                 include_path.is_dir()
                 and include_path
@@ -823,7 +824,7 @@ distribution so will be skipped.\
         if issubclass(builder_type, WheelBuilder) and (
             builder_type.format in self.patch_build_formats or format_all
         ):
-            builder_instance = builder_type(self.application.poetry)
+            builder_instance = WheelBuilder(self.application.poetry)
             package_info_file_dist_path = self._determine_package_info_path(
                 builder_instance,
                 out,
@@ -832,22 +833,27 @@ distribution so will be skipped.\
                 self.update_wheel(
                     Path(builder_instance.default_target_dir)
                     / builder_instance.wheel_filename,
+                    builder_instance.dist_info,
                     package_info_file_dist_path,
                     out,
                 )
         elif issubclass(builder_type, SdistBuilder) and (
             builder_type.format in self.patch_build_formats or format_all
         ):
-            builder_instance = builder_type(self.application.poetry)
+            builder_instance = SdistBuilder(self.application.poetry)
             dist_name = distribution_name(
                 self.application.poetry.package.name,
             )
             version = builder_instance._meta.version  # noqa: SLF001
             tar_file_name = f"{dist_name!s}-{version}.tar.gz"
-            package_info_file_dist_path = self._determine_package_info_path(
+            package_info_file_dist_path = Path(
+                f"{dist_name}-"
+                f"{builder_instance._meta.version}",  # noqa: SLF001
+            ) / self._determine_package_info_path(
                 builder_instance,
                 out,
             )
+
             if package_info_file_dist_path is not None:
                 self.update_sdist(
                     builder_instance.default_target_dir / tar_file_name,
@@ -929,6 +935,7 @@ distribution so will be skipped.\
     def update_wheel(
         self: "PackageInfoApplicationPlugin",
         wheel_file: Path,
+        dist_info_path: str,
         package_info_file_dist_path: Path,
         out: IO,
     ) -> None:
@@ -945,9 +952,6 @@ distribution so will be skipped.\
 """,
         )
 
-        distribution = distribution_name(self.application.poetry.package.name)
-        version = self.application.poetry.package.version
-        dist_info_path = f"{distribution}-{version}.dist-info"
         record_file_path = f"{dist_info_path}/RECORD"
 
         remove_existing_package_info = False
